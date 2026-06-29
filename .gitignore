@@ -9,6 +9,9 @@ __pycache__/
 data/raw_docs/*
 !data/raw_docs/.gitkeep
 
+data/demo_docs/*
+!data/demo_docs/.gitkeep
+
 storage/chroma/*
 !storage/chroma/.gitkeep
 
