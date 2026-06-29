@@ -1,0 +1,258 @@
+import os
+from typing import Any, Dict, List, Optional
+
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+
+class LLMService:
+    """
+    RAG 问答生成服务。
+
+    当前支持两种模式：
+    1. mock：不调用真实大模型，只根据检索结果生成一个可测试回答；
+    2. api：调用 OpenAI-compatible API，后续接入真实模型时使用。
+    """
+
+    def __init__(
+        self,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self.provider = provider or os.getenv("LLM_PROVIDER", "mock")
+        self.model = model or os.getenv("LLM_MODEL", "mock-model")
+        self.api_key = api_key or os.getenv("LLM_API_KEY", "")
+        self.base_url = base_url or os.getenv("LLM_BASE_URL", "")
+
+    def build_rag_prompt(
+        self,
+        question: str,
+        contexts: List[Dict[str, Any]],
+    ) -> str:
+        """
+        构造 RAG prompt。
+
+        输入：
+        - question: 用户问题
+        - contexts: vector_service.search() 返回的检索结果
+
+        输出：
+        - prompt 字符串
+        """
+        if not question or not question.strip():
+            raise ValueError("question 不能为空")
+
+        if not contexts:
+            context_text = "未检索到相关资料。"
+        else:
+            context_blocks = []
+
+            for item in contexts:
+                metadata = item.get("metadata", {})
+                file_name = metadata.get("file_name", "未知文件")
+                page_number = metadata.get("page_number", "未知页码")
+                chunk_index = metadata.get("chunk_index", "未知chunk")
+                content = item.get("content", "")
+
+                context_blocks.append(
+                    f"【来源】{file_name} | 第 {page_number} 页 | chunk_index={chunk_index}\n"
+                    f"【内容】{content}"
+                )
+
+            context_text = "\n\n".join(context_blocks)
+
+        prompt = f"""
+你是一个严谨的学术论文阅读助手。请只依据【参考资料】回答【用户问题】。
+
+要求：
+1. 不要编造参考资料中没有的信息。
+2. 如果参考资料不能支持明确回答，请说明“现有资料中未找到明确依据”。
+3. 回答时要保持学术表达，避免口语化。
+4. 输出必须包含三个部分：
+   （1）回答
+   （2）依据来源
+   （3）不确定之处
+
+【参考资料】
+{context_text}
+
+【用户问题】
+{question}
+""".strip()
+
+        return prompt
+
+    def answer_with_contexts(
+        self,
+        question: str,
+        contexts: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        基于检索结果生成 RAG 回答。
+
+        返回：
+        {
+            "answer": "...",
+            "sources": [...],
+            "uncertainty": "...",
+            "prompt": "..."
+        }
+        """
+        prompt = self.build_rag_prompt(question=question, contexts=contexts)
+        sources = self._build_sources(contexts)
+
+        if self.provider.lower() == "mock":
+            answer = self._mock_answer(question=question, contexts=contexts)
+        else:
+            answer = self._api_answer(prompt=prompt)
+
+        uncertainty = self._build_uncertainty(contexts)
+
+        return {
+            "question": question,
+            "answer": answer,
+            "sources": sources,
+            "uncertainty": uncertainty,
+            "prompt": prompt,
+        }
+
+    def _mock_answer(
+        self,
+        question: str,
+        contexts: List[Dict[str, Any]],
+    ) -> str:
+        """
+        本地 mock 回答。
+
+        目的：
+        - 在没有真实 API Key 的情况下验证 RAG 流程；
+        - 检查检索结果、来源返回、prompt 构造是否正常。
+
+        注意：
+        - mock 模式不是最终答案质量；
+        - 它只是把检索到的前几个片段组织成一个测试回答。
+        """
+        if not contexts:
+            return "现有资料中未找到明确依据。"
+
+        top_context = contexts[0]
+        top_content = top_context.get("content", "").replace("\n", " ")
+        top_content = top_content[:350]
+
+        return (
+            "根据当前检索到的资料，可以形成一个初步回答："
+            f"{top_content}……"
+            "需要注意，该回答由 mock 模式生成，仅用于验证 RAG 流程是否跑通；"
+            "正式版本应接入真实大模型 API 后再生成更完整的学术化回答。"
+        )
+
+    def _api_answer(self, prompt: str) -> str:
+        """
+        调用 OpenAI-compatible API。
+
+        后续如果使用 DeepSeek、通义千问、智谱等兼容 OpenAI SDK 的服务，
+        可以复用这个函数。
+        """
+        if not self.api_key:
+            raise ValueError(
+                "当前 LLM_PROVIDER 不是 mock，但未配置 LLM_API_KEY。"
+                "请在 .env 中配置 API Key，或将 LLM_PROVIDER 设置为 mock。"
+            )
+
+        try:
+            from openai import OpenAI
+        except ImportError as error:
+            raise ImportError(
+                "未安装 openai 包。请先执行：pip install openai"
+            ) from error
+
+        client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url if self.base_url else None,
+        )
+
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是一个严谨的学术论文阅读助手。",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.2,
+        )
+
+        return response.choices[0].message.content
+
+    def _build_sources(self, contexts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        从检索结果中整理来源信息。
+        """
+        sources = []
+
+        for item in contexts:
+            metadata = item.get("metadata", {})
+
+            sources.append(
+                {
+                    "file_name": metadata.get("file_name"),
+                    "page_number": metadata.get("page_number"),
+                    "chunk_index": metadata.get("chunk_index"),
+                    "distance": item.get("distance"),
+                }
+            )
+
+        return sources
+
+    def _build_uncertainty(self, contexts: List[Dict[str, Any]]) -> str:
+        """
+        生成不确定性说明。
+        """
+        if not contexts:
+            return "未检索到相关资料，因此无法形成有依据的回答。"
+
+        return (
+            "当前回答仅依据向量检索返回的片段生成。"
+            "如果检索片段未覆盖论文的完整研究设计、变量定义或实证结果，"
+            "回答可能存在遗漏，需要结合更多上下文进一步核验。"
+        )
+
+
+def format_rag_answer(rag_result: Dict[str, Any]) -> str:
+    """
+    将 RAG 回答结果格式化为终端可读文本。
+    """
+    lines = []
+
+    lines.append("【问题】")
+    lines.append(rag_result.get("question", ""))
+
+    lines.append("\n【回答】")
+    lines.append(rag_result.get("answer", ""))
+
+    lines.append("\n【依据来源】")
+    sources = rag_result.get("sources", [])
+
+    if not sources:
+        lines.append("未返回来源。")
+    else:
+        for index, source in enumerate(sources, start=1):
+            lines.append(
+                f"{index}. {source.get('file_name')} | "
+                f"第 {source.get('page_number')} 页 | "
+                f"chunk_index={source.get('chunk_index')} | "
+                f"distance={source.get('distance')}"
+            )
+
+    lines.append("\n【不确定之处】")
+    lines.append(rag_result.get("uncertainty", ""))
+
+    return "\n".join(lines)

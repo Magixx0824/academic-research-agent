@@ -1,7 +1,7 @@
 from app.tools.document_tools import load_document, load_documents_from_directory
 from app.tools.rag_tools import split_document, split_documents, preview_chunk
 from app.services.vector_service import VectorService, preview_search_result
-
+from app.services.llm_service import LLMService, format_rag_answer
 
 def preview_text(text: str, max_length: int = 300) -> str:
     """
@@ -154,10 +154,38 @@ def test_vector_index_and_search(chunks):
 
     return vector_service
 
+def test_rag_answer(vector_service):
+    print("\n" + "=" * 80)
+    print("测试 6：基础 RAG 问答生成")
+    print("=" * 80)
+
+    llm_service = LLMService(provider="mock")
+
+    test_questions = [
+        "人工智能如何影响企业创新韧性？",
+        "What is the role of digital technology in customer relationship performance?",
+    ]
+
+    for question in test_questions:
+        print("\n" + "-" * 80)
+        print(f"RAG 问题：{question}")
+
+        contexts = vector_service.search(
+            query=question,
+            top_k=3,
+        )
+
+        rag_result = llm_service.answer_with_contexts(
+            question=question,
+            contexts=contexts,
+        )
+
+        print(format_rag_answer(rag_result))
 
 if __name__ == "__main__":
     txt_document = test_single_txt()
     documents = test_batch_documents()
     test_single_document_chunking(txt_document)
     chunks = test_batch_chunking(documents)
-    test_vector_index_and_search(chunks)
+    vector_service = test_vector_index_and_search(chunks)
+    test_rag_answer(vector_service)
