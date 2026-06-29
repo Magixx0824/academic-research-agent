@@ -20,3 +20,19 @@ data/
 frontend/
 outputs/
 storage/
+
+## 当前进度
+
+- [x] 创建项目目录结构
+- [x] 创建 Python 虚拟环境
+- [x] 安装基础依赖
+- [x] 初始化本地 Git
+- [x] 创建 GitHub 远程仓库
+- [x] 配置 `.env.example`
+- [x] 配置 `.gitignore`
+- [x] 准备本地测试文档目录
+- [ ] 实现文档解析工具
+- [ ] 实现文本 chunk 切分工具
+- [ ] 实现 Chroma 向量索引
+- [ ] 实现基础 RAG 问答
+- [ ] 实现引用来源返回
