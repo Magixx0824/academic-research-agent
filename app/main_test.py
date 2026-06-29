@@ -159,11 +159,12 @@ def test_rag_answer(vector_service):
     print("测试 6：基础 RAG 问答生成")
     print("=" * 80)
 
-    llm_service = LLMService(provider="mock")
+    llm_service = LLMService()
+    print(f"当前 LLM_PROVIDER：{llm_service.provider}")
+    print(f"当前 LLM_MODEL：{llm_service.model}")
 
     test_questions = [
         "人工智能如何影响企业创新韧性？",
-        "What is the role of digital technology in customer relationship performance?",
     ]
 
     for question in test_questions:
@@ -172,7 +173,7 @@ def test_rag_answer(vector_service):
 
         contexts = vector_service.search(
             query=question,
-            top_k=3,
+            top_k=2,
         )
 
         rag_result = llm_service.answer_with_contexts(

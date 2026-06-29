@@ -175,22 +175,46 @@ class LLMService:
             base_url=self.base_url if self.base_url else None,
         )
 
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "你是一个严谨的学术论文阅读助手。",
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ],
-            temperature=0.2,
-        )
+        try:
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你是一个严谨的学术论文阅读助手。",
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    },
+                ],
+                temperature=0.2,
+            )
 
-        return response.choices[0].message.content
+            return response.choices[0].message.content
+
+        except Exception as error:
+            error_text = str(error)
+
+            if "Insufficient Balance" in error_text or "402" in error_text:
+                return (
+                    "真实大模型 API 调用失败：当前模型服务账户余额不足。"
+                    "请检查 API 账户余额或将 LLM_PROVIDER 设置为 mock 后继续本地流程测试。"
+                )
+
+            if "401" in error_text or "Unauthorized" in error_text:
+                return (
+                    "真实大模型 API 调用失败：API Key 无效或未授权。"
+                    "请检查 .env 中的 LLM_API_KEY。"
+                )
+
+            if "404" in error_text or "model" in error_text.lower():
+                return (
+                    "真实大模型 API 调用失败：模型名称或接口地址可能不正确。"
+                    "请检查 LLM_MODEL 和 LLM_BASE_URL。"
+                )
+
+            return f"真实大模型 API 调用失败，错误信息：{error_text}"
 
     def _build_sources(self, contexts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
