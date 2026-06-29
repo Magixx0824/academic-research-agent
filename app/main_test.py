@@ -1,5 +1,6 @@
 from app.tools.document_tools import load_document, load_documents_from_directory
 from app.tools.rag_tools import split_document, split_documents, preview_chunk
+from app.services.vector_service import VectorService, preview_search_result
 
 
 def preview_text(text: str, max_length: int = 300) -> str:
@@ -108,8 +109,55 @@ def test_batch_chunking(documents):
     return chunks
 
 
+def test_vector_index_and_search(chunks):
+    print("\n" + "=" * 80)
+    print("测试 5：Chroma 向量库写入与检索")
+    print("=" * 80)
+
+    vector_service = VectorService(
+        persist_dir="storage/chroma",
+        collection_name="academic_chunks",
+        reset_collection=True,
+    )
+
+    inserted_count = vector_service.add_chunks(chunks)
+    total_count = vector_service.count()
+
+    print(f"本次写入 chunk 数量：{inserted_count}")
+    print(f"向量库当前 chunk 总数：{total_count}")
+
+    test_queries = [
+        "这篇论文使用了什么研究方法？",
+        "人工智能如何影响企业创新韧性？",
+        "What is the role of digital technology in customer relationship performance?",
+    ]
+
+    for query in test_queries:
+        print("\n" + "-" * 80)
+        print(f"检索问题：{query}")
+
+        results = vector_service.search(query=query, top_k=3)
+
+        print(f"返回结果数量：{len(results)}")
+
+        for result in results:
+            metadata = result["metadata"]
+            print("-" * 40)
+            print(f"rank：{result['rank']}")
+            print(f"distance：{result['distance']}")
+            print(
+                f"来源：{metadata.get('file_name')} | "
+                f"第 {metadata.get('page_number')} 页 | "
+                f"chunk_index={metadata.get('chunk_index')}"
+            )
+            print(f"内容预览：{preview_search_result(result)}")
+
+    return vector_service
+
+
 if __name__ == "__main__":
     txt_document = test_single_txt()
     documents = test_batch_documents()
     test_single_document_chunking(txt_document)
-    test_batch_chunking(documents)
+    chunks = test_batch_chunking(documents)
+    test_vector_index_and_search(chunks)
