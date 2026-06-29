@@ -70,12 +70,12 @@ class LLMService:
 
 要求：
 1. 不要编造参考资料中没有的信息。
-2. 如果参考资料不能支持明确回答，请说明“现有资料中未找到明确依据”。
+2. 如果参考资料不能支持明确回答，请回答“现有资料中未找到明确依据”。
 3. 回答时要保持学术表达，避免口语化。
-4. 输出必须包含三个部分：
-   （1）回答
-   （2）依据来源
-   （3）不确定之处
+4. 只输出“回答正文”，不要单独输出“依据来源”和“不确定之处”。
+5. 不要编造文献、页码、作者或数据来源。
+6. 如果回答中涉及多个观点，请分点说明。
+7. 如果参考资料之间存在概念不一致，请明确指出。
 
 【参考资料】
 {context_text}
@@ -96,6 +96,7 @@ class LLMService:
 
         返回：
         {
+            "question": "...",
             "answer": "...",
             "sources": [...],
             "uncertainty": "...",
@@ -131,10 +132,6 @@ class LLMService:
         目的：
         - 在没有真实 API Key 的情况下验证 RAG 流程；
         - 检查检索结果、来源返回、prompt 构造是否正常。
-
-        注意：
-        - mock 模式不是最终答案质量；
-        - 它只是把检索到的前几个片段组织成一个测试回答。
         """
         if not contexts:
             return "现有资料中未找到明确依据。"
@@ -191,7 +188,8 @@ class LLMService:
                 temperature=0.2,
             )
 
-            return response.choices[0].message.content
+            answer = response.choices[0].message.content
+            return answer.strip() if answer else "模型未返回有效内容。"
 
         except Exception as error:
             error_text = str(error)
@@ -199,19 +197,35 @@ class LLMService:
             if "Insufficient Balance" in error_text or "402" in error_text:
                 return (
                     "真实大模型 API 调用失败：当前模型服务账户余额不足。"
-                    "请检查 API 账户余额或将 LLM_PROVIDER 设置为 mock 后继续本地流程测试。"
+                    "请检查 API 账户余额，或将 LLM_PROVIDER 设置为 mock 后继续本地流程测试。"
                 )
 
-            if "401" in error_text or "Unauthorized" in error_text:
+            if (
+                "401" in error_text
+                or "Unauthorized" in error_text
+                or "authentication" in error_text.lower()
+                or "api key" in error_text.lower()
+            ):
                 return (
                     "真实大模型 API 调用失败：API Key 无效或未授权。"
-                    "请检查 .env 中的 LLM_API_KEY。"
+                    "请检查 .env 中的 LLM_API_KEY 是否正确。"
                 )
 
             if "404" in error_text or "model" in error_text.lower():
                 return (
                     "真实大模型 API 调用失败：模型名称或接口地址可能不正确。"
                     "请检查 LLM_MODEL 和 LLM_BASE_URL。"
+                )
+
+            if (
+                "timeout" in error_text.lower()
+                or "connection" in error_text.lower()
+                or "connect" in error_text.lower()
+                or "network" in error_text.lower()
+            ):
+                return (
+                    "真实大模型 API 调用失败：网络连接或请求超时。"
+                    "请检查网络环境、代理设置或稍后重试。"
                 )
 
             return f"真实大模型 API 调用失败，错误信息：{error_text}"
