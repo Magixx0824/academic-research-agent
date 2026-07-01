@@ -239,12 +239,18 @@ class LLMService:
         for item in contexts:
             metadata = item.get("metadata", {})
 
+            retrieval_type = item.get("retrieval_type")
+
+            if retrieval_type is None:
+                retrieval_type = "vector" if item.get("distance") is not None else "keyword"
+
             sources.append(
                 {
                     "file_name": metadata.get("file_name"),
                     "page_number": metadata.get("page_number"),
                     "chunk_index": metadata.get("chunk_index"),
                     "distance": item.get("distance"),
+                    "retrieval_type": retrieval_type,
                 }
             )
 

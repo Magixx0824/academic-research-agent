@@ -199,9 +199,9 @@ def test_single_paper_reading(vector_service):
         llm_service=llm_service,
     )
 
-    reading_result = paper_tool.read_quick_card(
+    reading_result = paper_tool.read_full_card(
         file_name="demo_paper_cn.pdf",
-        top_k=5,
+        top_k=4,
     )
 
     print(format_paper_reading_card(reading_result))

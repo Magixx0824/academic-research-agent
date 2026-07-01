@@ -10,6 +10,16 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
             "研究背景 现实背景 学术背景 研究意义 专精特新企业 合作创新 组织韧性 持续创新能力",
             "引言 问题提出 外部冲击 技术环境动荡 专精特新企业 持续创新",
         ],
+        "keyword_queries": [
+            "研究背景",
+            "现实背景",
+            "学术背景",
+            "研究意义",
+            "问题提出",
+            "引言",
+            "专精特新",
+            "持续创新",
+        ],
     },
     "research_question": {
         "title": "研究问题",
@@ -17,6 +27,14 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
         "retrieval_queries": [
             "研究问题 研究假设 理论模型 合作创新 组织韧性 持续创新能力",
             "合作创新如何影响专精特新企业持续创新能力 组织韧性的中介作用 技术环境动荡性的调节作用",
+        ],
+        "keyword_queries": [
+            "研究问题",
+            "研究假设",
+            "理论模型",
+            "作用机制",
+            "中介作用",
+            "调节作用",
         ],
     },
     "theoretical_basis": {
@@ -26,6 +44,15 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
             "理论基础 理论分析 研究假设 合作创新 组织韧性 持续创新能力",
             "组织韧性 中介作用 技术环境动荡性 调节作用 理论模型",
         ],
+        "keyword_queries": [
+            "理论基础",
+            "理论分析",
+            "研究假设",
+            "理论模型",
+            "组织韧性",
+            "中介作用",
+            "调节作用",
+        ],
     },
     "data_and_method": {
         "title": "数据与方法",
@@ -33,7 +60,21 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
         "retrieval_queries": [
             "数据来源 样本 研究方法 变量测量 模型设计 实证检验",
             "问卷调查 回归模型 样本企业 变量定义 信度效度",
+            "描述性统计 相关性分析 回归分析 稳健性检验",
         ],
+        "keyword_queries": [
+            "数据来源",
+            "样本",
+            "研究方法",
+            "变量测量",
+            "模型设计",
+            "实证检验",
+            "问卷调查",
+            "回归",
+            "信度",
+            "效度",
+        ],
+        "prefer_keyword": True,
     },
     "variables": {
         "title": "核心变量",
@@ -42,6 +83,19 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
             "变量测量 被解释变量 解释变量 中介变量 调节变量 控制变量",
             "持续创新能力 合作创新 组织韧性 技术环境动荡性 变量定义",
         ],
+        "keyword_queries": [
+            "变量测量",
+            "被解释变量",
+            "解释变量",
+            "中介变量",
+            "调节变量",
+            "控制变量",
+            "持续创新能力",
+            "合作创新",
+            "组织韧性",
+            "技术环境动荡性",
+        ],
+        "prefer_keyword": True,
     },
     "main_findings": {
         "title": "主要结论",
@@ -62,6 +116,7 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
             "正向影响",
             "中介作用",
             "调节作用",
+            "异质性",
             "结论与启示",
             "管理启示",
         ],
@@ -73,6 +128,16 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
         "retrieval_queries": [
             "创新点 理论贡献 研究贡献 边际贡献 研究视角",
             "合作创新 组织韧性 专精特新企业 持续创新能力 技术环境动荡性",
+            "本文可能的边际贡献 理论贡献 实践意义",
+        ],
+        "keyword_queries": [
+            "创新点",
+            "理论贡献",
+            "研究贡献",
+            "边际贡献",
+            "研究视角",
+            "实践意义",
+            "理论意义",
         ],
     },
     "limitations": {
@@ -81,7 +146,20 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
         "retrieval_queries": [
             "研究局限 不足 未来研究 展望 限于篇幅 留存备索",
             "样本限制 数据限制 方法限制 稳健性检验 未来研究方向",
+            "不足之处 进一步研究",
         ],
+        "keyword_queries": [
+            "研究局限",
+            "不足",
+            "未来研究",
+            "展望",
+            "限于篇幅",
+            "留存备索",
+            "样本限制",
+            "数据限制",
+            "方法限制",
+        ],
+        "prefer_keyword": True,
     },
     "research_inspiration": {
         "title": "对我研究的启发",
@@ -89,7 +167,18 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
         "retrieval_queries": [
             "研究启示 管理启示 理论启示 结论与启示 未来研究",
             "合作创新 组织韧性 持续创新能力 变量设计 理论机制",
+            "专精特新企业 持续创新能力 组织韧性 技术环境动荡性",
         ],
+        "keyword_queries": [
+            "研究启示",
+            "管理启示",
+            "理论启示",
+            "结论与启示",
+            "未来研究",
+            "变量设计",
+            "理论机制",
+        ],
+        "prefer_keyword": True,
     },
 }
 
@@ -101,89 +190,14 @@ class PaperReadingTool:
     功能：
     1. 针对指定论文 file_name 进行定向检索；
     2. 围绕不同精读维度生成问题；
-    3. 调用 LLMService 生成结构化精读内容；
-    4. 返回可用于展示或后续导出的论文精读卡片。
+    3. 使用向量检索 + 关键词检索进行混合检索；
+    4. 调用 LLMService 生成结构化精读内容；
+    5. 返回可用于展示或后续导出的论文精读卡片。
     """
 
     def __init__(self, vector_service: Any, llm_service: Any):
         self.vector_service = vector_service
         self.llm_service = llm_service
-
-    def _search_contexts_for_section(
-        self,
-        file_name: str,
-        section_config: Dict[str, Any],
-        top_k: int,
-    ) -> List[Dict[str, Any]]:
-        """
-        针对某个精读维度进行增强检索。
-
-        做法：
-        1. 使用多个 retrieval query 进行向量检索；
-        2. 对特定维度使用关键词检索补充；
-        3. 按 file_name 限定在指定论文内；
-        4. 按页码和 chunk_index 去重；
-        5. 返回 top_k 个结果。
-        """
-        retrieval_queries = section_config.get("retrieval_queries") or [
-            section_config["question"]
-        ]
-
-        vector_results_map = {}
-
-        for retrieval_query in retrieval_queries:
-            results = self.vector_service.search(
-                query=retrieval_query,
-                top_k=top_k,
-                where={"file_name": file_name},
-            )
-
-            for item in results:
-                metadata = item.get("metadata", {})
-                result_key = (
-                    metadata.get("file_name"),
-                    metadata.get("page_number"),
-                    metadata.get("chunk_index"),
-                )
-
-                old_item = vector_results_map.get(result_key)
-
-                if old_item is None:
-                    vector_results_map[result_key] = item
-                else:
-                    old_distance = old_item.get("distance")
-                    new_distance = item.get("distance")
-
-                    if old_distance is None:
-                        vector_results_map[result_key] = item
-                    elif new_distance is not None and new_distance < old_distance:
-                        vector_results_map[result_key] = item
-
-        vector_results = sorted(
-            vector_results_map.values(),
-            key=lambda item: item.get("distance", 999),
-        )
-
-        vector_results = vector_results[:top_k]
-
-        keyword_results = self._keyword_search_contexts(
-            file_name=file_name,
-            section_config=section_config,
-            top_k=top_k,
-        )
-
-        if section_config.get("prefer_keyword"):
-            return self._merge_contexts(
-                primary_contexts=keyword_results,
-                secondary_contexts=vector_results,
-                top_k=top_k,
-            )
-
-        return self._merge_contexts(
-            primary_contexts=vector_results,
-            secondary_contexts=keyword_results,
-            top_k=top_k,
-        )
 
     @staticmethod
     def _normalize_for_keyword(text: str) -> str:
@@ -231,9 +245,11 @@ class PaperReadingTool:
         ]
 
         max_page = 0
+
         for chunk in all_chunks:
             metadata = chunk.get("metadata", {})
             page_number = metadata.get("page_number") or 0
+
             if isinstance(page_number, int) and page_number > max_page:
                 max_page = page_number
 
@@ -253,7 +269,7 @@ class PaperReadingTool:
                     score += 3
 
             # 对论文后半部分内容适当加权。
-            # 主要结论、研究启示、局限性通常更可能出现在后半部分。
+            # 结论、启示、局限性、未来研究通常更可能出现在后半部分。
             if section_config.get("prefer_keyword") and max_page:
                 if isinstance(page_number, int) and page_number >= max_page - 3:
                     score += 1
@@ -263,9 +279,12 @@ class PaperReadingTool:
                 score -= 2
 
             if score > 0:
+                keyword_chunk = dict(chunk)
+                keyword_chunk["retrieval_type"] = "keyword"
+
                 scored_chunks.append(
                     {
-                        "chunk": chunk,
+                        "chunk": keyword_chunk,
                         "score": score,
                         "page_number": page_number,
                         "chunk_index": chunk_index,
@@ -321,33 +340,104 @@ class PaperReadingTool:
 
         return merged[:top_k]
 
+    def _search_contexts_for_section(
+        self,
+        file_name: str,
+        section_config: Dict[str, Any],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        针对某个精读维度进行增强检索。
+
+        做法：
+        1. 使用多个 retrieval query 进行向量检索；
+        2. 对特定维度使用关键词检索补充；
+        3. 按 file_name 限定在指定论文内；
+        4. 按页码和 chunk_index 去重；
+        5. 返回 top_k 个结果。
+        """
+        retrieval_queries = section_config.get("retrieval_queries") or [
+            section_config["question"]
+        ]
+
+        vector_results_map = {}
+
+        for retrieval_query in retrieval_queries:
+            results = self.vector_service.search(
+                query=retrieval_query,
+                top_k=top_k,
+                where={"file_name": file_name},
+            )
+
+            for item in results:
+                metadata = item.get("metadata", {})
+                result_key = (
+                    metadata.get("file_name"),
+                    metadata.get("page_number"),
+                    metadata.get("chunk_index"),
+                )
+
+                old_item = vector_results_map.get(result_key)
+
+                if old_item is None:
+                    item["retrieval_type"] = "vector"
+                    vector_results_map[result_key] = item
+                else:
+                    old_distance = old_item.get("distance")
+                    new_distance = item.get("distance")
+
+                    if old_distance is None:
+                        item["retrieval_type"] = "vector"
+                        vector_results_map[result_key] = item
+                    elif new_distance is not None and new_distance < old_distance:
+                        item["retrieval_type"] = "vector"
+                        vector_results_map[result_key] = item
+
+        vector_results = sorted(
+            vector_results_map.values(),
+            key=lambda item: item.get("distance", 999),
+        )
+
+        vector_results = vector_results[:top_k]
+
+        keyword_results = self._keyword_search_contexts(
+            file_name=file_name,
+            section_config=section_config,
+            top_k=top_k,
+        )
+
+        if section_config.get("prefer_keyword"):
+            return self._merge_contexts(
+                primary_contexts=keyword_results,
+                secondary_contexts=vector_results,
+                top_k=top_k,
+            )
+
+        return self._merge_contexts(
+            primary_contexts=vector_results,
+            secondary_contexts=keyword_results,
+            top_k=top_k,
+        )
+
     def read_single_paper(
         self,
         file_name: str,
         sections: Optional[List[str]] = None,
-        top_k: int = 3,
+        top_k: int = 4,
     ) -> Dict[str, Any]:
         """
         生成单篇论文精读结果。
 
         参数：
-        - file_name: 要精读的论文文件名，必须与 metadata 中的 file_name 完全一致
-        - sections: 要生成的精读维度列表；如果为空，则默认生成全部维度
-        - top_k: 每个问题检索的 chunk 数量
+        - file_name: 要精读的论文文件名，必须与 metadata 中的 file_name 完全一致；
+        - sections: 要生成的精读维度列表；如果为空，则默认生成全部维度；
+        - top_k: 每个问题检索的 chunk 数量。
 
         返回：
         {
             "file_name": "...",
-            "sections": [
-                {
-                    "section_key": "...",
-                    "section_title": "...",
-                    "question": "...",
-                    "answer": "...",
-                    "sources": [...],
-                    "uncertainty": "..."
-                }
-            ]
+            "section_count": ...,
+            "sections": [...]
         }
         """
         if not file_name or not file_name.strip():
@@ -401,7 +491,7 @@ class PaperReadingTool:
     def read_quick_card(
         self,
         file_name: str,
-        top_k: int = 3,
+        top_k: int = 4,
     ) -> Dict[str, Any]:
         """
         生成轻量版论文精读卡片。
@@ -417,6 +507,37 @@ class PaperReadingTool:
         return self.read_single_paper(
             file_name=file_name,
             sections=quick_sections,
+            top_k=top_k,
+        )
+
+    def read_full_card(
+        self,
+        file_name: str,
+        top_k: int = 4,
+    ) -> Dict[str, Any]:
+        """
+        生成完整版论文精读卡片。
+
+        注意：
+        - 默认包含全部 9 个维度；
+        - 会产生 9 次 LLM API 调用；
+        - 建议在真实 API 可用且余额充足时使用。
+        """
+        full_sections = [
+            "research_background",
+            "research_question",
+            "theoretical_basis",
+            "data_and_method",
+            "variables",
+            "main_findings",
+            "innovation_points",
+            "limitations",
+            "research_inspiration",
+        ]
+
+        return self.read_single_paper(
+            file_name=file_name,
+            sections=full_sections,
             top_k=top_k,
         )
 
@@ -460,11 +581,14 @@ def format_paper_reading_card(reading_result: Dict[str, Any]) -> str:
             lines.append("未返回来源。")
         else:
             for source_index, source in enumerate(sources, start=1):
+                distance = source.get("distance")
+                retrieval_text = distance if distance is not None else "keyword"
+
                 lines.append(
                     f"{source_index}. {source.get('file_name')} | "
                     f"第 {source.get('page_number')} 页 | "
                     f"chunk_index={source.get('chunk_index')} | "
-                    f"distance={source.get('distance')}"
+                    f"retrieval={retrieval_text}"
                 )
 
         lines.append("\n【不确定之处】")
