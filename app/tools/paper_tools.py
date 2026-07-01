@@ -179,10 +179,42 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
             "模型",
             "变量",
         ],
+        "table_queries": [
+            "table",
+            "table 1",
+            "table 2",
+            "variable",
+            "variables",
+            "definition",
+            "measurement",
+            "indicator",
+            "input-output",
+            "input output",
+            "data source",
+            "sample",
+            "model",
+            "equation",
+            "formula",
+            "regression",
+            "DEA",
+            "dynamic network DEA",
+            "表",
+            "表1",
+            "表 1",
+            "变量",
+            "变量定义",
+            "变量说明",
+            "指标",
+            "指标体系",
+            "数据来源",
+            "样本",
+            "模型",
+            "公式",
+        ],
         "page_strategy": "middle",
-        "retrieval_order": ["keyword", "vector", "structural"],
+        "retrieval_order": ["table", "keyword", "vector", "structural"],
         "prefer_keyword": True,
-        "min_contexts": 6,
+        "min_contexts": 8,
     },
     "variables": {
         "title": "核心变量",
@@ -233,10 +265,47 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
             "指标",
             "测量",
         ],
+        "table_queries": [
+            "table",
+            "table 1",
+            "table 2",
+            "variables",
+            "variable definition",
+            "variable measurement",
+            "measurement",
+            "indicator",
+            "indicators",
+            "input",
+            "output",
+            "intermediate",
+            "carry-over",
+            "undesirable output",
+            "dependent variable",
+            "independent variable",
+            "mediating variable",
+            "moderating variable",
+            "control variable",
+            "表",
+            "表1",
+            "表 1",
+            "变量",
+            "变量定义",
+            "变量测量",
+            "指标体系",
+            "被解释变量",
+            "解释变量",
+            "中介变量",
+            "调节变量",
+            "控制变量",
+            "投入",
+            "产出",
+            "中间变量",
+            "非期望产出",
+        ],
         "page_strategy": "middle",
-        "retrieval_order": ["keyword", "vector", "structural"],
+        "retrieval_order": ["table", "keyword", "vector", "structural"],
         "prefer_keyword": True,
-        "min_contexts": 6,
+        "min_contexts": 8,
     },
     "main_findings": {
         "title": "主要结论",
@@ -429,12 +498,20 @@ SECTION_PROMPT_SUFFIXES: Dict[str, str] = {
         "如果论文主要是方法型论文，也可以概括其方法逻辑和分析框架。"
     ),
     "data_and_method": (
-        "请优先依据 data、sample、method、methodology、model、variables、empirical strategy 等片段进行概括。"
-        "如果论文使用 DEA、网络 DEA、动态网络 DEA 等方法，请说明其模型思想、阶段划分和指标设定。"
+        "请优先依据 data、sample、method、methodology、model、variables、empirical strategy、"
+        "table、equation、formula 等片段进行概括。"
+        "如果资料中出现 Table 1、变量定义表、指标体系表、模型公式或 DEA 投入产出表，"
+        "请优先从这些片段中提取数据来源、样本对象、研究方法、模型设计和指标设定。"
+        "如果论文使用 DEA、网络 DEA、动态网络 DEA 等方法，请说明其模型思想、阶段划分、"
+        "投入产出指标和效率测算逻辑。"
     ),
     "variables": (
-        "请优先依据 variables、measurement、indicator、input、output、intermediate、carry-over 等片段进行概括。"
-        "对于 DEA 或效率评价论文，可以将投入、产出、中间产出、结转变量和效率指标作为核心变量或指标体系说明。"
+        "请优先依据 variables、measurement、indicator、input、output、intermediate、carry-over、"
+        "table、variable definition、input-output variable 等片段进行概括。"
+        "对于 DEA 或效率评价论文，可以将投入、产出、中间产出、非期望产出、结转变量和效率指标"
+        "作为核心变量或指标体系说明。"
+        "如果资料中出现 Table 1、变量定义表、指标体系表，请优先依据表格型片段概括。"
+        "如果表格信息抽取不完整，请明确说明哪些变量信息缺失，不要自行补全。"
     ),
     "main_findings": (
         "请优先依据 results、findings、discussion、conclusion、policy implications 等片段进行概括。"
@@ -587,6 +664,106 @@ class PaperReadingTool:
 
         return False
 
+    @staticmethod
+    def _is_table_like_content(content: str) -> bool:
+        """
+        判断 chunk 是否像表格、变量表、指标表或模型说明片段。
+
+        说明：
+        - 这不是严格的 PDF 表格解析；
+        - 主要用于识别 pypdf 抽取出的表格文本；
+        - 适配英文论文的 Table 1 / Variables / Input-output；
+        - 适配中文论文的 表1 / 变量定义 / 指标体系。
+        """
+        if not content:
+            return False
+
+        lower_content = content.lower()
+        compact_content = re.sub(r"\s+", "", content)
+
+        table_patterns = [
+            r"\btable\s*\d+",
+            r"\btab\.\s*\d+",
+            r"\bvariables?\b",
+            r"\bdefinition\b",
+            r"\bmeasurement\b",
+            r"\bindicators?\b",
+            r"\binput\b",
+            r"\boutput\b",
+            r"\bintermediate\b",
+            r"\bcarry[-\s]?over\b",
+            r"\bundesirable\s+output\b",
+            r"\bdependent\s+variable\b",
+            r"\bindependent\s+variable\b",
+            r"\bcontrol\s+variable\b",
+            r"\bequation\b",
+            r"\bformula\b",
+            r"\bmodel\b",
+        ]
+
+        for pattern in table_patterns:
+            if re.search(pattern, lower_content):
+                return True
+
+        chinese_keywords = [
+            "表1",
+            "表2",
+            "表3",
+            "变量定义",
+            "变量说明",
+            "变量测量",
+            "指标体系",
+            "指标说明",
+            "投入指标",
+            "产出指标",
+            "中间变量",
+            "非期望产出",
+            "被解释变量",
+            "解释变量",
+            "控制变量",
+            "模型设定",
+            "公式",
+        ]
+
+        if any(keyword in compact_content for keyword in chinese_keywords):
+            return True
+
+        # 简单识别“类表格”文本：多行短字段 + 数字/符号较多。
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+        short_lines = [line for line in lines if 2 <= len(line) <= 80]
+        numeric_or_symbol_lines = [
+            line for line in short_lines
+            if re.search(r"\d|%|=|\(|\)|、|：|:", line)
+        ]
+
+        if len(short_lines) >= 5 and len(numeric_or_symbol_lines) >= 3:
+            return True
+
+        return False
+
+    def _table_score(
+        self,
+        content: str,
+        section_config: Dict[str, Any],
+    ) -> int:
+        """
+        计算表格型 chunk 对当前精读维度的重要性分数。
+        """
+        table_queries = section_config.get("table_queries", [])
+        keyword_queries = section_config.get("keyword_queries", [])
+        structure_keywords = section_config.get("structure_keywords", [])
+
+        score = 0
+
+        if self._is_table_like_content(content):
+            score += 5
+
+        score += self._keyword_score(content, table_queries)
+        score += self._keyword_score(content, keyword_queries)
+        score += self._keyword_score(content, structure_keywords)
+
+        return score
+
     def _keyword_score(self, content: str, keywords: List[str]) -> int:
         """
         计算关键词匹配分数。
@@ -672,6 +849,72 @@ class PaperReadingTool:
                 scored_chunks.append(
                     {
                         "chunk": keyword_chunk,
+                        "score": score,
+                        "page_number": page_number,
+                        "chunk_index": chunk_index,
+                    }
+                )
+
+        scored_chunks = sorted(
+            scored_chunks,
+            key=lambda item: (
+                -item["score"],
+                item["page_number"],
+                item["chunk_index"],
+            ),
+        )
+
+        return [item["chunk"] for item in scored_chunks[:top_k]]
+
+    def _table_search_contexts(
+        self,
+        file_name: str,
+        section_config: Dict[str, Any],
+        top_k: int,
+        all_chunks: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        表格型 chunk 检索。
+
+        主要服务于：
+        1. 数据与方法；
+        2. 核心变量；
+        3. DEA 论文中的投入产出指标；
+        4. 回归论文中的变量定义和模型设定。
+        """
+        table_queries = section_config.get("table_queries", [])
+
+        if not table_queries:
+            return []
+
+        all_chunks = all_chunks or self._get_all_chunks_by_file(file_name)
+
+        if not all_chunks:
+            return []
+
+        scored_chunks = []
+
+        for chunk in all_chunks:
+            content = chunk.get("content", "")
+            metadata = chunk.get("metadata", {})
+            page_number = self._safe_int(metadata.get("page_number"))
+            chunk_index = self._safe_int(metadata.get("chunk_index"))
+
+            score = self._table_score(
+                content=content,
+                section_config=section_config,
+            )
+
+            if self._is_reference_like(content):
+                score -= 8
+
+            if score > 0:
+                table_chunk = dict(chunk)
+                table_chunk["retrieval_type"] = "table"
+
+                scored_chunks.append(
+                    {
+                        "chunk": table_chunk,
                         "score": score,
                         "page_number": page_number,
                         "chunk_index": chunk_index,
@@ -926,10 +1169,18 @@ class PaperReadingTool:
             all_chunks=all_chunks,
         )
 
+        table_results = self._table_search_contexts(
+            file_name=file_name,
+            section_config=section_config,
+            top_k=search_top_k,
+            all_chunks=all_chunks,
+        )
+
         result_group_map = {
             "vector": vector_results,
             "keyword": keyword_results,
             "structural": structural_results,
+            "table": table_results,
         }
 
         retrieval_order = section_config.get(
