@@ -1,7 +1,6 @@
-import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import streamlit as st
 
@@ -17,6 +16,7 @@ from app.tools.rag_tools import split_documents
 from app.services.vector_service import VectorService
 from app.services.llm_service import LLMService
 from app.tools.workflow_tools import AcademicResearchWorkflow
+from app.tools.export_tools import ResultExportTool
 
 
 DEFAULT_DOC_DIR = "data/demo_docs"
@@ -39,7 +39,12 @@ def get_available_pdf_files(directory_path: str) -> List[str]:
 
 
 @st.cache_resource
-def init_services() -> tuple[VectorService, LLMService, AcademicResearchWorkflow]:
+def init_services() -> tuple[
+    VectorService,
+    LLMService,
+    AcademicResearchWorkflow,
+    ResultExportTool,
+]:
     """
     初始化核心服务。
 
@@ -60,7 +65,11 @@ def init_services() -> tuple[VectorService, LLMService, AcademicResearchWorkflow
         llm_service=llm_service,
     )
 
-    return vector_service, llm_service, workflow
+    export_tool = ResultExportTool(
+        output_dir="outputs/reports",
+    )
+
+    return vector_service, llm_service, workflow, export_tool
 
 
 def rebuild_vector_index(
@@ -89,6 +98,121 @@ def rebuild_vector_index(
     return len(chunks)
 
 
+def read_file_bytes(file_path: str) -> bytes:
+    """
+    读取导出文件的二进制内容，用于 Streamlit 下载按钮。
+    """
+    with open(file_path, "rb") as file:
+        return file.read()
+
+
+def get_file_name_from_path(file_path: str) -> str:
+    """
+    从路径中提取文件名，兼容 Windows 和类 Unix 路径。
+    """
+    return Path(file_path).name
+
+
+def build_export_file_stem(task_type: str) -> str:
+    """
+    根据任务类型构造导出文件名前缀。
+    """
+    task_name_map = {
+        "rag_answer": "rag_answer_result",
+        "single_paper_reading": "single_paper_reading_result",
+        "paper_comparison": "paper_comparison_result",
+        "literature_review": "literature_review_result",
+        "writing_check": "writing_check_result",
+    }
+
+    return task_name_map.get(task_type, "workflow_result")
+
+
+def clear_export_paths(button_key_prefix: str) -> None:
+    """
+    新生成任务结果后，清理旧导出路径，避免下载到上一次任务的文件。
+    """
+    st.session_state.pop(f"{button_key_prefix}_md_path", None)
+    st.session_state.pop(f"{button_key_prefix}_docx_path", None)
+
+
+def render_export_buttons(
+    workflow_result: dict,
+    export_tool: ResultExportTool,
+    button_key_prefix: str,
+) -> None:
+    """
+    渲染 Markdown 和 Word 导出按钮。
+
+    注意：
+    - Streamlit 点击按钮会触发 rerun；
+    - 因此导出文件路径必须存入 st.session_state；
+    - 下载按钮每次 rerun 都从 session_state 中读取已生成文件。
+    """
+    if not workflow_result:
+        return
+
+    task_type = workflow_result.get("task_type", "workflow_result")
+    file_stem = build_export_file_stem(task_type)
+
+    st.markdown("### 导出结果")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button(
+            "生成 Markdown 文件",
+            key=f"{button_key_prefix}_export_md",
+        ):
+            export_result = export_tool.export_workflow_result(
+                workflow_result=workflow_result,
+                export_format="md",
+                file_stem=file_stem,
+            )
+
+            st.session_state[f"{button_key_prefix}_md_path"] = export_result.file_path
+            st.success(f"Markdown 文件已生成：{export_result.file_name}")
+
+        md_path = st.session_state.get(f"{button_key_prefix}_md_path")
+
+        if md_path and Path(md_path).exists():
+            st.download_button(
+                label="下载 Markdown",
+                data=read_file_bytes(md_path),
+                file_name=get_file_name_from_path(md_path),
+                mime="text/markdown",
+                key=f"{button_key_prefix}_download_md",
+            )
+
+    with col2:
+        if st.button(
+            "生成 Word 文件",
+            key=f"{button_key_prefix}_export_docx",
+        ):
+            export_result = export_tool.export_workflow_result(
+                workflow_result=workflow_result,
+                export_format="docx",
+                file_stem=file_stem,
+            )
+
+            st.session_state[f"{button_key_prefix}_docx_path"] = export_result.file_path
+            st.success(f"Word 文件已生成：{export_result.file_name}")
+
+        docx_path = st.session_state.get(f"{button_key_prefix}_docx_path")
+
+        if docx_path and Path(docx_path).exists():
+            st.download_button(
+                label="下载 Word",
+                data=read_file_bytes(docx_path),
+                file_name=get_file_name_from_path(docx_path),
+                mime=(
+                    "application/vnd.openxmlformats-officedocument."
+                    "wordprocessingml.document"
+                ),
+                key=f"{button_key_prefix}_download_docx",
+            )
+
+
 def render_sidebar(vector_service: VectorService) -> None:
     """
     侧边栏：索引配置与状态。
@@ -99,6 +223,7 @@ def render_sidebar(vector_service: VectorService) -> None:
         "文档目录",
         value=DEFAULT_DOC_DIR,
         help="默认使用 data/demo_docs。也可以改为 data/raw_docs。",
+        key="sidebar_doc_dir",
     )
 
     chunk_size = st.sidebar.number_input(
@@ -107,6 +232,7 @@ def render_sidebar(vector_service: VectorService) -> None:
         max_value=2000,
         value=700,
         step=100,
+        key="sidebar_chunk_size",
     )
 
     overlap = st.sidebar.number_input(
@@ -115,6 +241,7 @@ def render_sidebar(vector_service: VectorService) -> None:
         max_value=500,
         value=100,
         step=50,
+        key="sidebar_overlap",
     )
 
     st.session_state["doc_dir"] = doc_dir
@@ -130,7 +257,7 @@ def render_sidebar(vector_service: VectorService) -> None:
 
     st.sidebar.write(f"当前向量库 chunk 数量：**{current_count}**")
 
-    if st.sidebar.button("重建向量索引"):
+    if st.sidebar.button("重建向量索引", key="rebuild_vector_index"):
         with st.spinner("正在读取文档、切分文本并写入向量库..."):
             chunk_count = rebuild_vector_index(
                 vector_service=vector_service,
@@ -142,18 +269,28 @@ def render_sidebar(vector_service: VectorService) -> None:
         st.sidebar.success(f"索引重建完成，写入 {chunk_count} 个 chunks。")
 
 
-def render_rag_answer(workflow: AcademicResearchWorkflow) -> None:
+def render_rag_answer(
+    workflow: AcademicResearchWorkflow,
+    export_tool: ResultExportTool,
+) -> None:
     st.subheader("基础 RAG 问答")
 
     question = st.text_area(
         "请输入问题",
         value="人工智能如何影响企业创新韧性？",
         height=100,
+        key="rag_answer_question",
     )
 
-    top_k = st.slider("检索片段数量 top_k", 1, 10, 3)
+    top_k = st.slider(
+        "检索片段数量 top_k",
+        1,
+        10,
+        3,
+        key="rag_answer_top_k",
+    )
 
-    if st.button("运行 RAG 问答"):
+    if st.button("运行 RAG 问答", key="run_rag_answer"):
         with st.spinner("正在检索并生成回答..."):
             result = workflow.run_task(
                 task_type="rag_answer",
@@ -161,30 +298,53 @@ def render_rag_answer(workflow: AcademicResearchWorkflow) -> None:
                 top_k=top_k,
             )
 
-        rag_result = result["result"]
+        st.session_state["rag_answer_workflow_result"] = result
+        clear_export_paths("rag_answer")
 
-        st.markdown("### 回答")
-        st.write(rag_result.get("answer", ""))
+    saved_result = st.session_state.get("rag_answer_workflow_result")
 
-        st.markdown("### 依据来源")
-        sources = rag_result.get("sources", [])
+    if not saved_result:
+        st.info("请先点击“运行 RAG 问答”生成结果。")
+        return
 
-        if not sources:
-            st.info("未返回来源。")
-        else:
-            for index, source in enumerate(sources, start=1):
-                st.write(
-                    f"{index}. {source.get('file_name')} | "
-                    f"第 {source.get('page_number')} 页 | "
-                    f"chunk_index={source.get('chunk_index')} | "
-                    f"retrieval={source.get('distance')}"
-                )
+    rag_result = saved_result["result"]
 
-        st.markdown("### 不确定之处")
-        st.write(rag_result.get("uncertainty", ""))
+    st.markdown("### 回答")
+    st.write(rag_result.get("answer", ""))
+
+    st.markdown("### 依据来源")
+    sources = rag_result.get("sources", [])
+
+    if not sources:
+        st.info("未返回来源。")
+    else:
+        for index, source in enumerate(sources, start=1):
+            distance = source.get("distance")
+            retrieval_text = distance if distance is not None else (
+                source.get("retrieval_type") or "unknown"
+            )
+
+            st.write(
+                f"{index}. {source.get('file_name')} | "
+                f"第 {source.get('page_number')} 页 | "
+                f"chunk_index={source.get('chunk_index')} | "
+                f"retrieval={retrieval_text}"
+            )
+
+    st.markdown("### 不确定之处")
+    st.write(rag_result.get("uncertainty", ""))
+
+    render_export_buttons(
+        workflow_result=saved_result,
+        export_tool=export_tool,
+        button_key_prefix="rag_answer",
+    )
 
 
-def render_single_paper_reading(workflow: AcademicResearchWorkflow) -> None:
+def render_single_paper_reading(
+    workflow: AcademicResearchWorkflow,
+    export_tool: ResultExportTool,
+) -> None:
     st.subheader("单篇论文精读")
 
     doc_dir = st.session_state.get("doc_dir", DEFAULT_DOC_DIR)
@@ -194,18 +354,29 @@ def render_single_paper_reading(workflow: AcademicResearchWorkflow) -> None:
         st.warning("当前文档目录下没有 PDF 文件。")
         return
 
-    file_name = st.selectbox("选择论文", pdf_files)
+    file_name = st.selectbox(
+        "选择论文",
+        pdf_files,
+        key="single_paper_file_name",
+    )
 
     mode = st.radio(
         "精读模式",
         options=["quick", "full"],
         format_func=lambda x: "快速精读（3 个维度）" if x == "quick" else "完整精读（9 个维度）",
         horizontal=True,
+        key="single_paper_mode",
     )
 
-    top_k = st.slider("每个维度检索片段数量 top_k", 1, 8, 4)
+    top_k = st.slider(
+        "每个维度检索片段数量 top_k",
+        1,
+        8,
+        4,
+        key="single_paper_top_k",
+    )
 
-    if st.button("生成单篇精读卡片"):
+    if st.button("生成单篇精读卡片", key="run_single_paper_reading"):
         with st.spinner("正在生成单篇论文精读卡片..."):
             result = workflow.run_task(
                 task_type="single_paper_reading",
@@ -214,36 +385,54 @@ def render_single_paper_reading(workflow: AcademicResearchWorkflow) -> None:
                 top_k=top_k,
             )
 
-        reading_result = result["result"]
+        st.session_state["single_paper_reading_workflow_result"] = result
+        clear_export_paths("single_paper_reading")
 
-        st.markdown("### 精读结果")
-        st.write(f"论文文件：{reading_result.get('file_name')}")
-        st.write(f"精读维度数量：{reading_result.get('section_count')}")
+    saved_result = st.session_state.get("single_paper_reading_workflow_result")
 
-        for section in reading_result.get("sections", []):
-            with st.expander(section.get("section_title", "未知维度"), expanded=False):
-                st.markdown("**问题**")
-                st.write(section.get("question", ""))
+    if not saved_result:
+        st.info("请先点击“生成单篇精读卡片”。")
+        return
 
-                st.markdown("**回答**")
-                st.write(section.get("answer", ""))
+    reading_result = saved_result["result"]
 
-                st.markdown("**依据来源**")
-                for index, source in enumerate(section.get("sources", []), start=1):
-                    distance = source.get("distance")
-                    retrieval_text = distance if distance is not None else (
-                        source.get("retrieval_type") or "keyword"
-                    )
+    st.markdown("### 精读结果")
+    st.write(f"论文文件：{reading_result.get('file_name')}")
+    st.write(f"精读维度数量：{reading_result.get('section_count')}")
 
-                    st.write(
-                        f"{index}. {source.get('file_name')} | "
-                        f"第 {source.get('page_number')} 页 | "
-                        f"chunk_index={source.get('chunk_index')} | "
-                        f"retrieval={retrieval_text}"
-                    )
+    for section in reading_result.get("sections", []):
+        with st.expander(section.get("section_title", "未知维度"), expanded=False):
+            st.markdown("**问题**")
+            st.write(section.get("question", ""))
+
+            st.markdown("**回答**")
+            st.write(section.get("answer", ""))
+
+            st.markdown("**依据来源**")
+            for index, source in enumerate(section.get("sources", []), start=1):
+                distance = source.get("distance")
+                retrieval_text = distance if distance is not None else (
+                    source.get("retrieval_type") or "keyword"
+                )
+
+                st.write(
+                    f"{index}. {source.get('file_name')} | "
+                    f"第 {source.get('page_number')} 页 | "
+                    f"chunk_index={source.get('chunk_index')} | "
+                    f"retrieval={retrieval_text}"
+                )
+
+    render_export_buttons(
+        workflow_result=saved_result,
+        export_tool=export_tool,
+        button_key_prefix="single_paper_reading",
+    )
 
 
-def render_paper_comparison(workflow: AcademicResearchWorkflow) -> None:
+def render_paper_comparison(
+    workflow: AcademicResearchWorkflow,
+    export_tool: ResultExportTool,
+) -> None:
     st.subheader("多篇论文对比")
 
     doc_dir = st.session_state.get("doc_dir", DEFAULT_DOC_DIR)
@@ -257,6 +446,7 @@ def render_paper_comparison(workflow: AcademicResearchWorkflow) -> None:
         "选择要对比的论文",
         options=pdf_files,
         default=pdf_files[:2],
+        key="paper_comparison_file_names",
     )
 
     dimensions = st.multiselect(
@@ -273,13 +463,24 @@ def render_paper_comparison(workflow: AcademicResearchWorkflow) -> None:
             "data_and_method",
             "main_findings",
         ],
+        key="paper_comparison_dimensions",
     )
 
-    top_k = st.slider("每个维度检索片段数量 top_k", 1, 8, 4)
+    top_k = st.slider(
+        "每个维度检索片段数量 top_k",
+        1,
+        8,
+        4,
+        key="paper_comparison_top_k",
+    )
 
-    include_synthesis = st.checkbox("生成综合对比分析", value=True)
+    include_synthesis = st.checkbox(
+        "生成综合对比分析",
+        value=True,
+        key="paper_comparison_include_synthesis",
+    )
 
-    if st.button("生成多篇论文对比"):
+    if st.button("生成多篇论文对比", key="run_paper_comparison"):
         if len(file_names) < 2:
             st.error("请至少选择 2 篇论文。")
             return
@@ -293,31 +494,51 @@ def render_paper_comparison(workflow: AcademicResearchWorkflow) -> None:
                 include_synthesis=include_synthesis,
             )
 
-        compare_result = result["result"]
+        st.session_state["paper_comparison_workflow_result"] = result
+        clear_export_paths("paper_comparison")
 
-        st.markdown("### 对比结果")
-        st.write(f"论文数量：{compare_result.get('paper_count')}")
-        st.write(f"对比维度数量：{compare_result.get('dimension_count')}")
+    saved_result = st.session_state.get("paper_comparison_workflow_result")
 
-        paper_summaries = compare_result.get("paper_summaries", {})
+    if not saved_result:
+        st.info("请先点击“生成多篇论文对比”。")
+        return
 
-        for dimension_key in compare_result.get("dimensions", []):
-            st.markdown(f"## 对比维度：{dimension_key}")
+    compare_result = saved_result["result"]
 
-            for file_name in file_names:
-                summary = paper_summaries.get(file_name, {}).get(dimension_key, {})
+    st.markdown("### 对比结果")
+    st.write(f"论文数量：{compare_result.get('paper_count')}")
+    st.write(f"对比维度数量：{compare_result.get('dimension_count')}")
 
-                with st.expander(f"{file_name} - {summary.get('dimension_title', dimension_key)}"):
-                    st.write(summary.get("answer", ""))
+    paper_summaries = compare_result.get("paper_summaries", {})
 
-        synthesis = compare_result.get("synthesis")
+    for dimension_key in compare_result.get("dimensions", []):
+        st.markdown(f"## 对比维度：{dimension_key}")
 
-        if synthesis:
-            st.markdown("### 综合对比分析")
-            st.write(synthesis.get("answer", ""))
+        for current_file_name in compare_result.get("file_names", []):
+            summary = paper_summaries.get(current_file_name, {}).get(dimension_key, {})
+
+            with st.expander(
+                f"{current_file_name} - {summary.get('dimension_title', dimension_key)}"
+            ):
+                st.write(summary.get("answer", ""))
+
+    synthesis = compare_result.get("synthesis")
+
+    if synthesis:
+        st.markdown("### 综合对比分析")
+        st.write(synthesis.get("answer", ""))
+
+    render_export_buttons(
+        workflow_result=saved_result,
+        export_tool=export_tool,
+        button_key_prefix="paper_comparison",
+    )
 
 
-def render_literature_review(workflow: AcademicResearchWorkflow) -> None:
+def render_literature_review(
+    workflow: AcademicResearchWorkflow,
+    export_tool: ResultExportTool,
+) -> None:
     st.subheader("文献综述框架生成")
 
     doc_dir = st.session_state.get("doc_dir", DEFAULT_DOC_DIR)
@@ -330,12 +551,14 @@ def render_literature_review(workflow: AcademicResearchWorkflow) -> None:
     topic = st.text_input(
         "综述主题",
         value="企业创新能力与数字技术应用的影响机制",
+        key="literature_review_topic",
     )
 
     file_names = st.multiselect(
         "选择参与综述的论文",
         options=pdf_files,
         default=pdf_files[:2],
+        key="literature_review_file_names",
     )
 
     dimensions = st.multiselect(
@@ -352,11 +575,18 @@ def render_literature_review(workflow: AcademicResearchWorkflow) -> None:
             "data_and_method",
             "main_findings",
         ],
+        key="literature_review_dimensions",
     )
 
-    top_k = st.slider("每个维度检索片段数量 top_k", 1, 8, 4)
+    top_k = st.slider(
+        "每个维度检索片段数量 top_k",
+        1,
+        8,
+        4,
+        key="literature_review_top_k",
+    )
 
-    if st.button("生成文献综述框架"):
+    if st.button("生成文献综述框架", key="run_literature_review"):
         if len(file_names) < 2:
             st.error("请至少选择 2 篇论文。")
             return
@@ -370,29 +600,48 @@ def render_literature_review(workflow: AcademicResearchWorkflow) -> None:
                 top_k=top_k,
             )
 
-        review_result = result["result"]
+        st.session_state["literature_review_workflow_result"] = result
+        clear_export_paths("literature_review")
 
-        st.markdown("### 文献综述框架")
-        st.write(review_result.get("framework", ""))
+    saved_result = st.session_state.get("literature_review_workflow_result")
 
-        st.markdown("### 依据来源")
-        for index, source in enumerate(review_result.get("sources", []), start=1):
-            retrieval_type = source.get("retrieval_type") or "summary"
-            chunk_index = source.get("chunk_index")
+    if not saved_result:
+        st.info("请先点击“生成文献综述框架”。")
+        return
 
-            st.write(
-                f"{index}. {source.get('file_name')} | "
-                f"来源类型={retrieval_type} | "
-                f"摘要维度={chunk_index}"
-            )
+    review_result = saved_result["result"]
+
+    st.markdown("### 文献综述框架")
+    st.write(review_result.get("framework", ""))
+
+    st.markdown("### 依据来源")
+    for index, source in enumerate(review_result.get("sources", []), start=1):
+        retrieval_type = source.get("retrieval_type") or "summary"
+        chunk_index = source.get("chunk_index")
+
+        st.write(
+            f"{index}. {source.get('file_name')} | "
+            f"来源类型={retrieval_type} | "
+            f"摘要维度={chunk_index}"
+        )
+
+    render_export_buttons(
+        workflow_result=saved_result,
+        export_tool=export_tool,
+        button_key_prefix="literature_review",
+    )
 
 
-def render_writing_check(workflow: AcademicResearchWorkflow) -> None:
+def render_writing_check(
+    workflow: AcademicResearchWorkflow,
+    export_tool: ResultExportTool,
+) -> None:
     st.subheader("学术写作检查")
 
     writing_goal = st.text_input(
         "写作目标",
         value="理论机制段落写作检查",
+        key="writing_check_goal",
     )
 
     text = st.text_area(
@@ -405,6 +654,7 @@ def render_writing_check(workflow: AcademicResearchWorkflow) -> None:
             "发挥作用，同时技术环境动荡性也可能影响这种关系。"
         ),
         height=220,
+        key="writing_check_text",
     )
 
     focus = st.multiselect(
@@ -426,9 +676,10 @@ def render_writing_check(workflow: AcademicResearchWorkflow) -> None:
             "evidence",
             "mechanism",
         ],
+        key="writing_check_focus",
     )
 
-    if st.button("运行写作检查"):
+    if st.button("运行写作检查", key="run_writing_check"):
         with st.spinner("正在检查文本..."):
             result = workflow.run_task(
                 task_type="writing_check",
@@ -437,13 +688,28 @@ def render_writing_check(workflow: AcademicResearchWorkflow) -> None:
                 focus=focus,
             )
 
-        check_result = result["result"]
+        st.session_state["writing_check_workflow_result"] = result
+        clear_export_paths("writing_check")
 
-        st.markdown("### 检查结果")
-        st.write(check_result.get("check_result", ""))
+    saved_result = st.session_state.get("writing_check_workflow_result")
 
-        st.markdown("### 不确定之处")
-        st.write(check_result.get("uncertainty", ""))
+    if not saved_result:
+        st.info("请先点击“运行写作检查”。")
+        return
+
+    check_result = saved_result["result"]
+
+    st.markdown("### 检查结果")
+    st.write(check_result.get("check_result", ""))
+
+    st.markdown("### 不确定之处")
+    st.write(check_result.get("uncertainty", ""))
+
+    render_export_buttons(
+        workflow_result=saved_result,
+        export_tool=export_tool,
+        button_key_prefix="writing_check",
+    )
 
 
 def main() -> None:
@@ -456,7 +722,7 @@ def main() -> None:
     st.title("学术论文阅读与写作辅助 Agent")
     st.caption("Academic Research Workflow Agent")
 
-    vector_service, llm_service, workflow = init_services()
+    vector_service, llm_service, workflow, export_tool = init_services()
 
     render_sidebar(vector_service)
 
@@ -473,22 +739,23 @@ def main() -> None:
             "文献综述框架生成",
             "学术写作检查",
         ],
+        key="selected_task",
     )
 
     if task == "基础 RAG 问答":
-        render_rag_answer(workflow)
+        render_rag_answer(workflow, export_tool)
 
     elif task == "单篇论文精读":
-        render_single_paper_reading(workflow)
+        render_single_paper_reading(workflow, export_tool)
 
     elif task == "多篇论文对比":
-        render_paper_comparison(workflow)
+        render_paper_comparison(workflow, export_tool)
 
     elif task == "文献综述框架生成":
-        render_literature_review(workflow)
+        render_literature_review(workflow, export_tool)
 
     elif task == "学术写作检查":
-        render_writing_check(workflow)
+        render_writing_check(workflow, export_tool)
 
 
 if __name__ == "__main__":
