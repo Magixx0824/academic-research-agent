@@ -5,6 +5,7 @@ from app.services.llm_service import LLMService, format_rag_answer
 from app.tools.paper_tools import PaperReadingTool, format_paper_reading_card
 from app.tools.compare_tools import PaperCompareTool, format_paper_comparison_result
 from app.tools.review_tools import LiteratureReviewTool, format_literature_review_framework
+from app.tools.writing_tools import AcademicWritingCheckTool, format_writing_check_result
 
 def preview_text(text: str, max_length: int = 300) -> str:
     """
@@ -276,6 +277,43 @@ def test_literature_review_framework(vector_service):
 
     return review_result
 
+def test_academic_writing_check():
+    print("\n" + "=" * 80)
+    print("测试 10：学术写作检查工具")
+    print("=" * 80)
+
+    llm_service = LLMService()
+
+    print(f"当前 LLM_PROVIDER：{llm_service.provider}")
+    print(f"当前 LLM_MODEL：{llm_service.model}")
+
+    writing_tool = AcademicWritingCheckTool(
+        llm_service=llm_service,
+    )
+
+    demo_text = """
+    企业创新能力是企业获得竞争优势的重要来源。随着外部环境不断变化，企业需要通过合作创新
+    来提升自身能力。合作创新可以帮助企业获得外部资源，也可以提高企业面对风险的能力。
+    但是现有研究对合作创新如何影响企业创新能力的机制研究还不够充分。因此，本文认为组织韧性
+    可能在合作创新和持续创新能力之间发挥作用，同时技术环境动荡性也可能影响这种关系。
+    """
+
+    check_result = writing_tool.check_text(
+        text=demo_text,
+        writing_goal="理论机制段落写作检查",
+        focus=[
+            "structure",
+            "logic",
+            "academic_style",
+            "evidence",
+            "mechanism",
+        ],
+    )
+
+    print(format_writing_check_result(check_result))
+
+    return check_result
+
 if __name__ == "__main__":
     txt_document = test_single_txt()
     documents = test_batch_documents()
@@ -284,10 +322,13 @@ if __name__ == "__main__":
     vector_service = test_vector_index_and_search(chunks)
     test_rag_answer(vector_service)
 
-    # 第五模块已验收，默认注释，避免重复消耗 9 次 LLM API 调用。
+    # 第五模块已验收，默认注释，避免重复消耗 API。
     # test_single_paper_reading(vector_service)
 
-    # 第六模块已验收，测试第七模块时可注释，避免重复消耗 API。
+    # 第六模块已验收，默认注释，避免重复消耗 API。
     # test_paper_comparison(vector_service)
 
-    test_literature_review_framework(vector_service)
+    # 第七模块已验收，默认注释，避免重复消耗 API。
+    # test_literature_review_framework(vector_service)
+
+    test_academic_writing_check()
