@@ -1,8 +1,9 @@
-from app.tools.paper_tools import PaperReadingTool, format_paper_reading_card
 from app.tools.document_tools import load_document, load_documents_from_directory
 from app.tools.rag_tools import split_document, split_documents, preview_chunk
 from app.services.vector_service import VectorService, preview_search_result
 from app.services.llm_service import LLMService, format_rag_answer
+from app.tools.paper_tools import PaperReadingTool, format_paper_reading_card
+from app.tools.compare_tools import PaperCompareTool, format_paper_comparison_result
 
 def preview_text(text: str, max_length: int = 300) -> str:
     """
@@ -208,6 +209,39 @@ def test_single_paper_reading(vector_service):
 
     return reading_result
 
+def test_paper_comparison(vector_service):
+    print("\n" + "=" * 80)
+    print("测试 8：多篇论文对比工具")
+    print("=" * 80)
+
+    llm_service = LLMService()
+
+    print(f"当前 LLM_PROVIDER：{llm_service.provider}")
+    print(f"当前 LLM_MODEL：{llm_service.model}")
+
+    compare_tool = PaperCompareTool(
+        vector_service=vector_service,
+        llm_service=llm_service,
+    )
+
+    compare_result = compare_tool.compare_papers(
+        file_names=[
+            "demo_paper_cn.pdf",
+            "demo_paper_en.pdf",
+        ],
+        dimensions=[
+            "research_question",
+            "data_and_method",
+            "main_findings",
+        ],
+        top_k=3,
+        include_synthesis=True,
+    )
+
+    print(format_paper_comparison_result(compare_result))
+
+    return compare_result
+
 if __name__ == "__main__":
     txt_document = test_single_txt()
     documents = test_batch_documents()
@@ -215,4 +249,8 @@ if __name__ == "__main__":
     chunks = test_batch_chunking(documents)
     vector_service = test_vector_index_and_search(chunks)
     test_rag_answer(vector_service)
-    test_single_paper_reading(vector_service)
+
+    # 第五模块已验收。开发第六模块时可临时注释，避免每次重复消耗 9 次 LLM API 调用。
+    # test_single_paper_reading(vector_service)
+
+    test_paper_comparison(vector_service)
