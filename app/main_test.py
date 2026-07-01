@@ -7,6 +7,7 @@ from app.tools.compare_tools import PaperCompareTool, format_paper_comparison_re
 from app.tools.review_tools import LiteratureReviewTool, format_literature_review_framework
 from app.tools.writing_tools import AcademicWritingCheckTool, format_writing_check_result
 from app.tools.workflow_tools import AcademicResearchWorkflow, format_workflow_result
+from app.tools.export_tools import ResultExportTool, format_export_result
 
 def preview_text(text: str, max_length: int = 300) -> str:
     """
@@ -340,24 +341,91 @@ def test_academic_research_workflow(vector_service):
 
     return workflow_result
 
+def test_result_export_tool():
+    print("\n" + "=" * 80)
+    print("测试 12：结果导出工具")
+    print("=" * 80)
+
+    export_tool = ResultExportTool(
+        output_dir="outputs/reports",
+    )
+
+    demo_workflow_result = {
+        "task_type": "writing_check",
+        "task_name": "学术写作检查",
+        "status": "success",
+        "result": {
+            "writing_goal": "理论机制段落写作检查",
+            "focus": [
+                "structure",
+                "logic",
+                "academic_style",
+            ],
+            "focus_labels": [
+                "结构完整性",
+                "逻辑连贯性",
+                "学术表达规范性",
+            ],
+            "char_count": 120,
+            "check_result": (
+                "### 总体判断\n"
+                "该段落已经具备基本的问题意识，但理论机制推导仍然不够充分。\n\n"
+                "### 主要问题清单\n"
+                "1. 概念之间的因果关系没有充分展开。\n"
+                "2. 缺少必要的文献支撑。\n\n"
+                "### 逐项修改建议\n"
+                "建议围绕“前因变量—中介机制—结果变量”的逻辑链条展开论证。"
+            ),
+            "sources": [
+                {
+                    "file_name": "user_draft",
+                    "page_number": None,
+                    "chunk_index": "writing_check_input",
+                    "distance": None,
+                    "retrieval_type": "draft",
+                }
+            ],
+            "uncertainty": (
+                "当前检查仅依据用户提供的局部文本进行判断，"
+                "未结合完整论文上下文和参考文献。"
+            ),
+        },
+    }
+
+    markdown_result = export_tool.export_workflow_result(
+        workflow_result=demo_workflow_result,
+        export_format="md",
+        file_stem="demo_writing_check_result",
+    )
+
+    print(format_export_result(markdown_result))
+
+    docx_result = export_tool.export_workflow_result(
+        workflow_result=demo_workflow_result,
+        export_format="docx",
+        file_stem="demo_writing_check_result",
+    )
+
+    print(format_export_result(docx_result))
+
+    return {
+        "markdown": markdown_result,
+        "docx": docx_result,
+    }
+
 if __name__ == "__main__":
     txt_document = test_single_txt()
     documents = test_batch_documents()
     test_single_document_chunking(txt_document)
     chunks = test_batch_chunking(documents)
     vector_service = test_vector_index_and_search(chunks)
-    test_rag_answer(vector_service)
 
-    # 第五模块已验收，默认注释，避免重复消耗 API。
+    # 以下模块已验收，默认注释，避免重复消耗 API。
+    # test_rag_answer(vector_service)
     # test_single_paper_reading(vector_service)
-
-    # 第六模块已验收，默认注释，避免重复消耗 API。
     # test_paper_comparison(vector_service)
-
-    # 第七模块已验收，默认注释，避免重复消耗 API。
     # test_literature_review_framework(vector_service)
-
-    # 第八模块已验收，默认注释，避免重复消耗 API。
     # test_academic_writing_check()
+    # test_academic_research_workflow(vector_service)
 
-    test_academic_research_workflow(vector_service)
+    test_result_export_tool()
