@@ -6,6 +6,7 @@ from app.tools.paper_tools import PaperReadingTool, format_paper_reading_card
 from app.tools.compare_tools import PaperCompareTool, format_paper_comparison_result
 from app.tools.review_tools import LiteratureReviewTool, format_literature_review_framework
 from app.tools.writing_tools import AcademicWritingCheckTool, format_writing_check_result
+from app.tools.workflow_tools import AcademicResearchWorkflow, format_workflow_result
 
 def preview_text(text: str, max_length: int = 300) -> str:
     """
@@ -314,6 +315,31 @@ def test_academic_writing_check():
 
     return check_result
 
+def test_academic_research_workflow(vector_service):
+    print("\n" + "=" * 80)
+    print("测试 11：统一学术研究工作流")
+    print("=" * 80)
+
+    llm_service = LLMService()
+
+    print(f"当前 LLM_PROVIDER：{llm_service.provider}")
+    print(f"当前 LLM_MODEL：{llm_service.model}")
+
+    workflow = AcademicResearchWorkflow(
+        vector_service=vector_service,
+        llm_service=llm_service,
+    )
+
+    workflow_result = workflow.run_task(
+        task_type="rag_answer",
+        question="人工智能如何影响企业创新韧性？",
+        top_k=2,
+    )
+
+    print(format_workflow_result(workflow_result))
+
+    return workflow_result
+
 if __name__ == "__main__":
     txt_document = test_single_txt()
     documents = test_batch_documents()
@@ -331,4 +357,7 @@ if __name__ == "__main__":
     # 第七模块已验收，默认注释，避免重复消耗 API。
     # test_literature_review_framework(vector_service)
 
-    test_academic_writing_check()
+    # 第八模块已验收，默认注释，避免重复消耗 API。
+    # test_academic_writing_check()
+
+    test_academic_research_workflow(vector_service)
