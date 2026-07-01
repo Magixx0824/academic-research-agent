@@ -212,12 +212,22 @@ def format_literature_review_framework(review_result: Dict[str, Any]) -> str:
                 source.get("retrieval_type") or "summary"
             )
 
-            lines.append(
-                f"{index}. {source.get('file_name')} | "
-                f"第 {source.get('page_number')} 页 | "
-                f"chunk_index={source.get('chunk_index')} | "
-                f"retrieval={retrieval_text}"
-            )
+            page_number = source.get("page_number")
+            chunk_index = source.get("chunk_index")
+
+            if page_number is None:
+                lines.append(
+                    f"{index}. {source.get('file_name')} | "
+                    f"来源类型={retrieval_text} | "
+                    f"摘要维度={chunk_index}"
+                )
+            else:
+                lines.append(
+                    f"{index}. {source.get('file_name')} | "
+                    f"第 {page_number} 页 | "
+                    f"chunk_index={chunk_index} | "
+                    f"retrieval={retrieval_text}"
+                )
 
     lines.append("\n" + "-" * 80)
     lines.append("【不确定之处】")
