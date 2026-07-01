@@ -258,8 +258,8 @@ class LLMService:
             return "未检索到相关资料，因此无法形成有依据的回答。"
 
         return (
-            "当前回答仅依据向量检索返回的片段生成。"
-            "如果检索片段未覆盖论文的完整研究设计、变量定义或实证结果，"
+            "当前回答仅依据系统检索返回的片段生成。"
+            "如果检索片段未覆盖论文的完整研究设计、变量定义、实证结果或结论部分，"
             "回答可能存在遗漏，需要结合更多上下文进一步核验。"
         )
 
@@ -283,11 +283,14 @@ def format_rag_answer(rag_result: Dict[str, Any]) -> str:
         lines.append("未返回来源。")
     else:
         for index, source in enumerate(sources, start=1):
+            distance = source.get("distance")
+            distance_text = distance if distance is not None else "keyword"
+
             lines.append(
                 f"{index}. {source.get('file_name')} | "
                 f"第 {source.get('page_number')} 页 | "
                 f"chunk_index={source.get('chunk_index')} | "
-                f"distance={source.get('distance')}"
+                f"retrieval={distance_text}"
             )
 
     lines.append("\n【不确定之处】")
