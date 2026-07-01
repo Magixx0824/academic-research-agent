@@ -2,7 +2,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import List
-
 import streamlit as st
 
 
@@ -11,6 +10,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+
+from app.tools.batch_paper_tools import (
+    BatchPaperReadingTool,
+    format_batch_paper_reading_result,
+)
 
 from app.tools.document_tools import load_documents_from_directory
 from app.tools.rag_tools import split_documents
@@ -74,6 +78,27 @@ def init_services() -> tuple[
 
     return vector_service, llm_service, workflow, export_tool
 
+def get_available_files_from_vector_store(vector_service: VectorService) -> List[str]:
+    """
+    从向量库中获取当前已索引的文件名列表。
+    """
+    try:
+        collection = vector_service.collection
+        result = collection.get(include=["metadatas"])
+        metadatas = result.get("metadatas", [])
+
+        file_names = sorted(
+            {
+                metadata.get("file_name")
+                for metadata in metadatas
+                if metadata and metadata.get("file_name")
+            }
+        )
+
+        return file_names
+
+    except Exception:
+        return []
 
 def rebuild_vector_index(
     vector_service: VectorService,
@@ -177,6 +202,9 @@ def clear_workflow_results() -> None:
         "literature_review_docx_path",
         "writing_check_md_path",
         "writing_check_docx_path",
+        "batch_paper_reading_workflow_result",
+        "batch_paper_reading_md_path",
+        "batch_paper_reading_docx_path",
     ]
 
     for key in keys_to_clear:
@@ -204,6 +232,7 @@ def build_export_file_stem(task_type: str) -> str:
     task_name_map = {
         "rag_answer": "rag_answer_result",
         "single_paper_reading": "single_paper_reading_result",
+        "batch_paper_reading": "batch_paper_reading_result",
         "paper_comparison": "paper_comparison_result",
         "literature_review": "literature_review_result",
         "writing_check": "writing_check_result",
@@ -592,6 +621,119 @@ def render_single_paper_reading(
         button_key_prefix="single_paper_reading",
     )
 
+def render_batch_paper_reading(
+    vector_service: VectorService,
+    llm_service: LLMService,
+    export_tool: ResultExportTool,
+) -> None:
+    """
+    渲染批量论文精读页面。
+    """
+    st.subheader("批量论文精读")
+
+    st.write(
+        "一次性选择多篇论文，批量生成 quick 或 full 精读卡片。"
+        "适合用于文献初筛、文献汇报和综述准备。"
+    )
+
+    available_files = [
+        file_name
+        for file_name in get_available_files_from_vector_store(vector_service)
+        if file_name.lower().endswith(".pdf")
+    ]
+
+    if not available_files:
+        st.warning("当前向量库中没有可用 PDF 文档。请先上传 PDF 文献并重建索引。")
+        return
+
+    selected_files = st.multiselect(
+        "选择需要批量精读的论文",
+        options=available_files,
+        default=available_files[: min(2, len(available_files))],
+        key="batch_paper_reading_selected_files",
+    )
+
+    mode = st.radio(
+        "精读模式",
+        options=["quick", "full"],
+        format_func=lambda value: {
+            "quick": "quick：研究背景、研究问题、主要结论",
+            "full": "full：完整 9 个维度",
+        }[value],
+        horizontal=False,
+        key="batch_paper_reading_mode",
+    )
+
+    top_k = st.slider(
+        "每个维度检索的 chunk 数量",
+        min_value=4,
+        max_value=12,
+        value=6,
+        step=1,
+        key="batch_paper_reading_top_k",
+    )
+
+    continue_on_error = st.checkbox(
+        "单篇失败时继续处理后续论文",
+        value=True,
+        key="batch_paper_reading_continue_on_error",
+    )
+
+    st.info(
+        "说明：full 模式会对每篇论文调用 9 次 LLM。"
+        "如果一次选择多篇论文，API 调用次数会明显增加。"
+    )
+
+    if st.button("生成批量论文精读结果", key="run_batch_paper_reading"):
+        if not selected_files:
+            st.warning("请至少选择一篇论文。")
+            return
+
+        batch_tool = BatchPaperReadingTool(
+            vector_service=vector_service,
+            llm_service=llm_service,
+        )
+
+        with st.spinner("正在批量生成论文精读卡片..."):
+            batch_result = batch_tool.read_papers(
+                file_names=selected_files,
+                mode=mode,
+                top_k=top_k,
+                continue_on_error=continue_on_error,
+            )
+
+        formatted_output = format_batch_paper_reading_result(batch_result)
+
+        workflow_result = {
+            "task_type": "batch_paper_reading",
+            "task_name": "批量论文精读",
+            "status": batch_result.get("status", "unknown"),
+            "result": formatted_output,
+            "raw_result": batch_result,
+        }
+
+        st.session_state["batch_paper_reading_workflow_result"] = workflow_result
+        clear_export_paths("batch_paper_reading")
+
+    workflow_result = st.session_state.get("batch_paper_reading_workflow_result")
+
+    workflow_result = st.session_state.get("batch_paper_reading_workflow_result")
+
+    if workflow_result:
+        st.markdown("### 批量精读结果")
+
+        formatted_output = workflow_result.get("result", "")
+
+        if isinstance(formatted_output, dict):
+            formatted_output = formatted_output.get("formatted_output", "")
+
+        st.markdown(formatted_output)
+
+        render_export_buttons(
+            workflow_result=workflow_result,
+            export_tool=export_tool,
+            button_key_prefix="batch_paper_reading",
+        )
 
 def render_paper_comparison(
     workflow: AcademicResearchWorkflow,
@@ -899,6 +1041,7 @@ def main() -> None:
         options=[
             "基础 RAG 问答",
             "单篇论文精读",
+            "批量论文精读",
             "多篇论文对比",
             "文献综述框架生成",
             "学术写作检查",
@@ -912,6 +1055,13 @@ def main() -> None:
     elif task == "单篇论文精读":
         render_single_paper_reading(workflow, export_tool)
 
+    elif task == "批量论文精读":
+        render_batch_paper_reading(
+            vector_service=vector_service,
+            llm_service=llm_service,
+            export_tool=export_tool,
+        )
+
     elif task == "多篇论文对比":
         render_paper_comparison(workflow, export_tool)
 
@@ -920,6 +1070,8 @@ def main() -> None:
 
     elif task == "学术写作检查":
         render_writing_check(workflow, export_tool)
+
+
 
 
 if __name__ == "__main__":
