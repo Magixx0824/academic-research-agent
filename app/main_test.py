@@ -4,6 +4,7 @@ from app.services.vector_service import VectorService, preview_search_result
 from app.services.llm_service import LLMService, format_rag_answer
 from app.tools.paper_tools import PaperReadingTool, format_paper_reading_card
 from app.tools.compare_tools import PaperCompareTool, format_paper_comparison_result
+from app.tools.review_tools import LiteratureReviewTool, format_literature_review_framework
 
 def preview_text(text: str, max_length: int = 300) -> str:
     """
@@ -242,6 +243,39 @@ def test_paper_comparison(vector_service):
 
     return compare_result
 
+def test_literature_review_framework(vector_service):
+    print("\n" + "=" * 80)
+    print("测试 9：文献综述框架生成工具")
+    print("=" * 80)
+
+    llm_service = LLMService()
+
+    print(f"当前 LLM_PROVIDER：{llm_service.provider}")
+    print(f"当前 LLM_MODEL：{llm_service.model}")
+
+    review_tool = LiteratureReviewTool(
+        vector_service=vector_service,
+        llm_service=llm_service,
+    )
+
+    review_result = review_tool.generate_review_framework(
+        topic="企业创新能力与数字技术应用的影响机制",
+        file_names=[
+            "demo_paper_cn.pdf",
+            "demo_paper_en.pdf",
+        ],
+        dimensions=[
+            "research_question",
+            "data_and_method",
+            "main_findings",
+        ],
+        top_k=4,
+    )
+
+    print(format_literature_review_framework(review_result))
+
+    return review_result
+
 if __name__ == "__main__":
     txt_document = test_single_txt()
     documents = test_batch_documents()
@@ -250,7 +284,10 @@ if __name__ == "__main__":
     vector_service = test_vector_index_and_search(chunks)
     test_rag_answer(vector_service)
 
-    # 第五模块已验收。开发第六模块时可临时注释，避免每次重复消耗 9 次 LLM API 调用。
+    # 第五模块已验收，默认注释，避免重复消耗 9 次 LLM API 调用。
     # test_single_paper_reading(vector_service)
 
-    test_paper_comparison(vector_service)
+    # 第六模块已验收，测试第七模块时可注释，避免重复消耗 API。
+    # test_paper_comparison(vector_service)
+
+    test_literature_review_framework(vector_service)
