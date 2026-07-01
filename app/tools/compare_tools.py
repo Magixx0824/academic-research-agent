@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+from app.tools.paper_tools import PaperReadingTool
 
 
 PAPER_COMPARISON_DIMENSIONS: Dict[str, Dict[str, Any]] = {
@@ -63,6 +64,10 @@ class PaperCompareTool:
     def __init__(self, vector_service: Any, llm_service: Any):
         self.vector_service = vector_service
         self.llm_service = llm_service
+        self.paper_reading_tool = PaperReadingTool(
+            vector_service=vector_service,
+            llm_service=llm_service,
+        )
 
     def _search_contexts_for_dimension(
         self,
@@ -120,11 +125,55 @@ class PaperCompareTool:
         return sorted_results[:top_k]
 
     def _summarize_paper_dimension(
-        self,
-        file_name: str,
-        dimension_key: str,
-        top_k: int,
+            self,
+            file_name: str,
+            dimension_key: str,
+            top_k: int,
     ) -> Dict[str, Any]:
+        """
+        生成某篇论文在某一维度下的摘要。
+
+        这里复用第五模块 PaperReadingTool 的混合检索能力，
+        避免多篇对比工具重新使用较弱的单纯向量检索。
+        """
+        if dimension_key not in PAPER_COMPARISON_DIMENSIONS:
+            raise ValueError(
+                f"未知的对比维度：{dimension_key}。"
+                f"可选值包括：{list(PAPER_COMPARISON_DIMENSIONS.keys())}"
+            )
+
+        reading_result = self.paper_reading_tool.read_single_paper(
+            file_name=file_name,
+            sections=[dimension_key],
+            top_k=top_k,
+        )
+
+        sections = reading_result.get("sections", [])
+
+        if not sections:
+            dimension_config = PAPER_COMPARISON_DIMENSIONS[dimension_key]
+            return {
+                "file_name": file_name,
+                "dimension_key": dimension_key,
+                "dimension_title": dimension_config["title"],
+                "question": dimension_config["question"],
+                "answer": "现有资料中未找到明确依据。",
+                "sources": [],
+                "uncertainty": "未生成该维度的单篇精读结果。",
+            }
+
+        section_result = sections[0]
+        dimension_config = PAPER_COMPARISON_DIMENSIONS[dimension_key]
+
+        return {
+            "file_name": file_name,
+            "dimension_key": dimension_key,
+            "dimension_title": dimension_config["title"],
+            "question": section_result.get("question", dimension_config["question"]),
+            "answer": section_result.get("answer", ""),
+            "sources": section_result.get("sources", []),
+            "uncertainty": section_result.get("uncertainty", ""),
+        }
         """
         生成某篇论文在某一维度下的摘要。
         """
