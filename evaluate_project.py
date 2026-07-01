@@ -1,5 +1,6 @@
 import os
 import sys
+from app.tools.export_tools import ResultExportTool
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -430,6 +431,117 @@ def evaluate_writing_check(workflow: AcademicResearchWorkflow) -> EvaluationItem
             detail=f"运行异常：{error}",
         )
 
+def evaluate_export_tool() -> EvaluationItem:
+    """
+    评估结果导出工具是否可用。
+
+    检查内容：
+    1. 能否导出 Markdown 文件；
+    2. 能否导出 Word docx 文件；
+    3. 导出文件是否真实存在；
+    4. 导出文件大小是否大于 0；
+    5. 导出结果对象是否 success=True。
+    """
+    print("[步骤] 执行结果导出工具测试")
+
+    try:
+        export_tool = ResultExportTool(
+            output_dir="outputs/reports",
+        )
+
+        demo_workflow_result = {
+            "task_type": "writing_check",
+            "task_name": "学术写作检查",
+            "status": "success",
+            "result": {
+                "writing_goal": "模块十六导出验收测试",
+                "focus": [
+                    "structure",
+                    "logic",
+                    "academic_style",
+                ],
+                "focus_labels": [
+                    "结构完整性",
+                    "逻辑连贯性",
+                    "学术表达规范性",
+                ],
+                "char_count": 120,
+                "check_result": (
+                    "### 总体判断\n"
+                    "该段落具备基本的问题意识，但仍需进一步强化理论机制推导。\n\n"
+                    "### 主要问题清单\n"
+                    "1. 概念之间的因果关系需要进一步展开。\n"
+                    "2. 关键判断需要补充文献支撑。\n\n"
+                    "### 逐项修改建议\n"
+                    "建议围绕“前因变量—作用机制—结果变量”的逻辑链条展开论证。"
+                ),
+                "sources": [
+                    {
+                        "file_name": "module16_demo_input",
+                        "page_number": None,
+                        "chunk_index": "export_evaluation_input",
+                        "distance": None,
+                        "retrieval_type": "draft",
+                    }
+                ],
+                "uncertainty": (
+                    "当前检查仅依据模块十六的测试文本生成，"
+                    "不代表完整论文质量评价。"
+                ),
+            },
+        }
+
+        markdown_result = export_tool.export_workflow_result(
+            workflow_result=demo_workflow_result,
+            export_format="md",
+            file_stem="module16_export_check",
+        )
+
+        docx_result = export_tool.export_workflow_result(
+            workflow_result=demo_workflow_result,
+            export_format="docx",
+            file_stem="module16_export_check",
+        )
+
+        markdown_path = Path(markdown_result.file_path)
+        docx_path = Path(docx_result.file_path)
+
+        markdown_ok = (
+            markdown_result.success
+            and markdown_path.exists()
+            and markdown_path.stat().st_size > 0
+        )
+
+        docx_ok = (
+            docx_result.success
+            and docx_path.exists()
+            and docx_path.stat().st_size > 0
+        )
+
+        passed = markdown_ok and docx_ok
+
+        detail = (
+            f"Markdown：{markdown_path.name} | "
+            f"exists={markdown_path.exists()} | "
+            f"size={markdown_path.stat().st_size if markdown_path.exists() else 0} bytes；"
+            f"Word：{docx_path.name} | "
+            f"exists={docx_path.exists()} | "
+            f"size={docx_path.stat().st_size if docx_path.exists() else 0} bytes"
+        )
+
+        return EvaluationItem(
+            name="结果导出可用性",
+            passed=passed,
+            detail=f"{detail} | 标准：md/docx 均成功生成且文件大小大于 0 | {'通过' if passed else '未通过'}",
+        )
+
+    except Exception as error:
+        return EvaluationItem(
+            name="结果导出可用性",
+            passed=False,
+            detail=f"导出测试失败：{error}",
+        )
+
 
 def print_summary(evaluation_items: List[EvaluationItem]) -> None:
     print("\n" + "=" * 80)
@@ -501,6 +613,7 @@ def main() -> None:
     evaluation_items.append(evaluate_single_paper_reading(workflow, pdf_files))
     evaluation_items.append(evaluate_paper_comparison(workflow, pdf_files))
     evaluation_items.append(evaluate_writing_check(workflow))
+    evaluation_items.append(evaluate_export_tool())
 
     print_summary(evaluation_items)
 
