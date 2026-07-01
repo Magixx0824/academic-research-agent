@@ -234,7 +234,7 @@ def test_paper_comparison(vector_service):
             "data_and_method",
             "main_findings",
         ],
-        top_k=3,
+        top_k=4,
         include_synthesis=True,
     )
 

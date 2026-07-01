@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from app.tools.paper_tools import PaperReadingTool
+from app.tools.paper_tools import PAPER_READING_SECTIONS, PaperReadingTool
 
 
 PAPER_COMPARISON_DIMENSIONS: Dict[str, Dict[str, Any]] = {
@@ -8,8 +8,11 @@ PAPER_COMPARISON_DIMENSIONS: Dict[str, Dict[str, Any]] = {
         "question": "请概括这篇论文的核心研究问题。重点说明作者试图解释什么关系、机制或现象。",
         "retrieval_queries": [
             "研究问题 研究假设 理论模型 作用机制 中介作用 调节作用",
-            "核心研究问题 研究目的 research question research objective theoretical model",
-            "hypothesis mechanism mediation moderation relationship",
+            "核心研究问题 研究目的 合作创新 组织韧性 持续创新能力",
+            "research question research objective purpose of this study theoretical model",
+            "digital technology customization customer relationship performance absorptive capacity",
+            "DT use customer exploitation customer exploration customization customer relationship performance",
+            "hypothesis mediation moderation mechanism relationship",
         ],
     },
     "data_and_method": {
@@ -17,8 +20,10 @@ PAPER_COMPARISON_DIMENSIONS: Dict[str, Dict[str, Any]] = {
         "question": "请概括这篇论文使用的数据来源、样本对象、研究方法和模型设计。",
         "retrieval_queries": [
             "数据来源 样本 研究方法 变量测量 模型设计 实证检验 回归模型",
-            "data sample methodology method model empirical test measurement",
-            "research method data source sample regression model variable measurement",
+            "上市专精特新企业 A股 样本 变量测量 工具变量 Heckman 稳健性检验",
+            "data collection sample survey questionnaire methodology method model empirical test measurement",
+            "partial least squares path modeling PLS-PM sample data common method bias marker variable",
+            "construct measurement second-order composite constructs beta coefficients R2 f2",
         ],
     },
     "main_findings": {
@@ -26,8 +31,11 @@ PAPER_COMPARISON_DIMENSIONS: Dict[str, Dict[str, Any]] = {
         "question": "请概括这篇论文的主要研究结论。重点说明实证结果或理论发现。",
         "retrieval_queries": [
             "研究结论 主要结论 研究发现 实证结果 回归结果 稳健性检验",
+            "合作创新 持续创新能力 显著正向影响 组织韧性 中介作用 技术环境动荡性 调节作用",
             "findings results conclusion empirical results robustness main findings",
-            "significant positive effect mediation moderation conclusion implications",
+            "total effect direct effect indirect effect mediation customization customer relationship performance",
+            "DT use customer exploitation customer exploration customer relationship performance findings results",
+            "fsQCA configurations high customer relationship performance conclusion",
         ],
     },
     "theoretical_basis": {
@@ -124,58 +132,46 @@ class PaperCompareTool:
 
         return sorted_results[:top_k]
 
+    @staticmethod
+    def _merge_contexts(
+        primary_contexts: List[Dict[str, Any]],
+        secondary_contexts: List[Dict[str, Any]],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        合并两路检索结果，并按 file_name/page_number/chunk_index 去重。
+        """
+        merged = []
+        seen_keys = set()
+
+        for contexts in [primary_contexts, secondary_contexts]:
+            for item in contexts:
+                metadata = item.get("metadata", {})
+                item_key = (
+                    metadata.get("file_name"),
+                    metadata.get("page_number"),
+                    metadata.get("chunk_index"),
+                )
+
+                if item_key not in seen_keys:
+                    merged.append(item)
+                    seen_keys.add(item_key)
+
+        return merged[:top_k]
+
     def _summarize_paper_dimension(
-            self,
-            file_name: str,
-            dimension_key: str,
-            top_k: int,
+        self,
+        file_name: str,
+        dimension_key: str,
+        top_k: int,
     ) -> Dict[str, Any]:
         """
         生成某篇论文在某一维度下的摘要。
 
-        这里复用第五模块 PaperReadingTool 的混合检索能力，
-        避免多篇对比工具重新使用较弱的单纯向量检索。
-        """
-        if dimension_key not in PAPER_COMPARISON_DIMENSIONS:
-            raise ValueError(
-                f"未知的对比维度：{dimension_key}。"
-                f"可选值包括：{list(PAPER_COMPARISON_DIMENSIONS.keys())}"
-            )
-
-        reading_result = self.paper_reading_tool.read_single_paper(
-            file_name=file_name,
-            sections=[dimension_key],
-            top_k=top_k,
-        )
-
-        sections = reading_result.get("sections", [])
-
-        if not sections:
-            dimension_config = PAPER_COMPARISON_DIMENSIONS[dimension_key]
-            return {
-                "file_name": file_name,
-                "dimension_key": dimension_key,
-                "dimension_title": dimension_config["title"],
-                "question": dimension_config["question"],
-                "answer": "现有资料中未找到明确依据。",
-                "sources": [],
-                "uncertainty": "未生成该维度的单篇精读结果。",
-            }
-
-        section_result = sections[0]
-        dimension_config = PAPER_COMPARISON_DIMENSIONS[dimension_key]
-
-        return {
-            "file_name": file_name,
-            "dimension_key": dimension_key,
-            "dimension_title": dimension_config["title"],
-            "question": section_result.get("question", dimension_config["question"]),
-            "answer": section_result.get("answer", ""),
-            "sources": section_result.get("sources", []),
-            "uncertainty": section_result.get("uncertainty", ""),
-        }
-        """
-        生成某篇论文在某一维度下的摘要。
+        采用双路检索：
+        1. 复用 PaperReadingTool 的混合检索，增强中文论文结构定位；
+        2. 使用 CompareTool 的中英文向量检索，增强英文论文识别；
+        3. 合并后统一交给 LLM 生成摘要。
         """
         if dimension_key not in PAPER_COMPARISON_DIMENSIONS:
             raise ValueError(
@@ -186,10 +182,29 @@ class PaperCompareTool:
         dimension_config = PAPER_COMPARISON_DIMENSIONS[dimension_key]
         question = dimension_config["question"]
 
-        contexts = self._search_contexts_for_dimension(
+        reading_contexts = []
+
+        if dimension_key in PAPER_READING_SECTIONS:
+            reading_section_config = PAPER_READING_SECTIONS[dimension_key]
+            reading_contexts = self.paper_reading_tool._search_contexts_for_section(
+                file_name=file_name,
+                section_config=reading_section_config,
+                top_k=top_k,
+            )
+
+        compare_contexts = self._search_contexts_for_dimension(
             file_name=file_name,
             dimension_config=dimension_config,
             top_k=top_k,
+        )
+
+        # 对中文论文而言，reading_contexts 通常更强；
+        # 对英文论文而言，compare_contexts 通常更强。
+        # 这里先把两者合并，给 LLM 更多可用依据。
+        contexts = self._merge_contexts(
+            primary_contexts=reading_contexts,
+            secondary_contexts=compare_contexts,
+            top_k=top_k + 2,
         )
 
         rag_result = self.llm_service.answer_with_contexts(
