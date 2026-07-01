@@ -1,3 +1,4 @@
+from app.tools.paper_tools import PaperReadingTool, format_paper_reading_card
 from app.tools.document_tools import load_document, load_documents_from_directory
 from app.tools.rag_tools import split_document, split_documents, preview_chunk
 from app.services.vector_service import VectorService, preview_search_result
@@ -183,6 +184,30 @@ def test_rag_answer(vector_service):
 
         print(format_rag_answer(rag_result))
 
+def test_single_paper_reading(vector_service):
+    print("\n" + "=" * 80)
+    print("测试 7：单篇论文精读工具")
+    print("=" * 80)
+
+    llm_service = LLMService()
+
+    print(f"当前 LLM_PROVIDER：{llm_service.provider}")
+    print(f"当前 LLM_MODEL：{llm_service.model}")
+
+    paper_tool = PaperReadingTool(
+        vector_service=vector_service,
+        llm_service=llm_service,
+    )
+
+    reading_result = paper_tool.read_quick_card(
+        file_name="demo_paper_cn.pdf",
+        top_k=5,
+    )
+
+    print(format_paper_reading_card(reading_result))
+
+    return reading_result
+
 if __name__ == "__main__":
     txt_document = test_single_txt()
     documents = test_batch_documents()
@@ -190,3 +215,4 @@ if __name__ == "__main__":
     chunks = test_batch_chunking(documents)
     vector_service = test_vector_index_and_search(chunks)
     test_rag_answer(vector_service)
+    test_single_paper_reading(vector_service)

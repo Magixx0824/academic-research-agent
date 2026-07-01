@@ -153,6 +153,49 @@ class VectorService:
 
         return self._format_query_result(result)
 
+    def get_chunks_by_file(self, file_name: str) -> List[Dict[str, Any]]:
+        """
+        根据 file_name 获取某篇论文的全部 chunks。
+
+        该方法用于单篇论文精读中的关键词检索、页码过滤和结构化内容定位。
+        """
+        if not file_name or not file_name.strip():
+            raise ValueError("file_name 不能为空")
+
+        result = self.collection.get(
+            where={"file_name": file_name},
+            include=["documents", "metadatas"],
+        )
+
+        ids = result.get("ids", [])
+        documents = result.get("documents", [])
+        metadatas = result.get("metadatas", [])
+
+        chunks = []
+
+        for index, document in enumerate(documents):
+            metadata = metadatas[index] if index < len(metadatas) else {}
+            chunk_id = ids[index] if index < len(ids) else None
+
+            chunks.append(
+                {
+                    "chunk_id": chunk_id,
+                    "content": document,
+                    "metadata": metadata,
+                    "distance": None,
+                }
+            )
+
+        chunks = sorted(
+            chunks,
+            key=lambda item: (
+                item.get("metadata", {}).get("page_number") or 0,
+                item.get("metadata", {}).get("chunk_index") or 0,
+            ),
+        )
+
+        return chunks
+
     def _format_query_result(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         将 Chroma 原始 query 结果整理成更容易使用的结构。

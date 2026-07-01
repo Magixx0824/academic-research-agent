@@ -1,3 +1,4 @@
+import re
 from typing import Any, Dict, List, Optional
 
 
@@ -50,6 +51,21 @@ PAPER_READING_SECTIONS: Dict[str, Dict[str, Any]] = {
             "合作创新 对 持续创新能力 显著正向影响 组织韧性 中介作用 技术环境动荡性 调节作用",
             "结论与启示 研究结论 专精特新企业 持续创新能力 合作创新 组织韧性",
         ],
+        "keyword_queries": [
+            "研究结论",
+            "主要结论",
+            "研究发现",
+            "实证结果",
+            "回归结果",
+            "稳健性检验",
+            "显著正向",
+            "正向影响",
+            "中介作用",
+            "调节作用",
+            "结论与启示",
+            "管理启示",
+        ],
+        "prefer_keyword": True,
     },
     "innovation_points": {
         "title": "创新点",
@@ -103,16 +119,17 @@ class PaperReadingTool:
         针对某个精读维度进行增强检索。
 
         做法：
-        1. 使用多个 retrieval query 进行本地向量检索；
-        2. 按 file_name 限定在指定论文内；
-        3. 按页码和 chunk_index 去重；
-        4. 保留距离较小的 top_k 个结果。
+        1. 使用多个 retrieval query 进行向量检索；
+        2. 对特定维度使用关键词检索补充；
+        3. 按 file_name 限定在指定论文内；
+        4. 按页码和 chunk_index 去重；
+        5. 返回 top_k 个结果。
         """
         retrieval_queries = section_config.get("retrieval_queries") or [
             section_config["question"]
         ]
 
-        merged_results = {}
+        vector_results_map = {}
 
         for retrieval_query in retrieval_queries:
             results = self.vector_service.search(
@@ -129,25 +146,180 @@ class PaperReadingTool:
                     metadata.get("chunk_index"),
                 )
 
-                old_item = merged_results.get(result_key)
+                old_item = vector_results_map.get(result_key)
 
                 if old_item is None:
-                    merged_results[result_key] = item
+                    vector_results_map[result_key] = item
                 else:
                     old_distance = old_item.get("distance")
                     new_distance = item.get("distance")
 
                     if old_distance is None:
-                        merged_results[result_key] = item
+                        vector_results_map[result_key] = item
                     elif new_distance is not None and new_distance < old_distance:
-                        merged_results[result_key] = item
+                        vector_results_map[result_key] = item
 
-        sorted_results = sorted(
-            merged_results.values(),
+        vector_results = sorted(
+            vector_results_map.values(),
             key=lambda item: item.get("distance", 999),
         )
 
-        return sorted_results[:top_k]
+        vector_results = vector_results[:top_k]
+
+        keyword_results = self._keyword_search_contexts(
+            file_name=file_name,
+            section_config=section_config,
+            top_k=top_k,
+        )
+
+        if section_config.get("prefer_keyword"):
+            return self._merge_contexts(
+                primary_contexts=keyword_results,
+                secondary_contexts=vector_results,
+                top_k=top_k,
+            )
+
+        return self._merge_contexts(
+            primary_contexts=vector_results,
+            secondary_contexts=keyword_results,
+            top_k=top_k,
+        )
+
+    @staticmethod
+    def _normalize_for_keyword(text: str) -> str:
+        """
+        用于中文 PDF 文本关键词匹配的轻量归一化。
+
+        作用：
+        1. 去除空白字符；
+        2. 降低 PDF 抽取文本中空格、换行对关键词匹配的影响。
+        """
+        if not text:
+            return ""
+
+        text = re.sub(r"\s+", "", text)
+        return text.lower()
+
+    def _keyword_search_contexts(
+        self,
+        file_name: str,
+        section_config: Dict[str, Any],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        基于关键词从指定论文的全部 chunks 中筛选候选片段。
+
+        主要用于“主要结论”“数据与方法”“核心变量”等具有明确结构关键词的维度。
+        """
+        keyword_queries = section_config.get("keyword_queries", [])
+
+        if not keyword_queries:
+            return []
+
+        if not hasattr(self.vector_service, "get_chunks_by_file"):
+            return []
+
+        all_chunks = self.vector_service.get_chunks_by_file(file_name=file_name)
+
+        if not all_chunks:
+            return []
+
+        normalized_keywords = [
+            self._normalize_for_keyword(keyword)
+            for keyword in keyword_queries
+            if keyword
+        ]
+
+        max_page = 0
+        for chunk in all_chunks:
+            metadata = chunk.get("metadata", {})
+            page_number = metadata.get("page_number") or 0
+            if isinstance(page_number, int) and page_number > max_page:
+                max_page = page_number
+
+        scored_chunks = []
+
+        for chunk in all_chunks:
+            content = chunk.get("content", "")
+            normalized_content = self._normalize_for_keyword(content)
+            metadata = chunk.get("metadata", {})
+            page_number = metadata.get("page_number") or 0
+            chunk_index = metadata.get("chunk_index") or 0
+
+            score = 0
+
+            for keyword in normalized_keywords:
+                if keyword and keyword in normalized_content:
+                    score += 3
+
+            # 对论文后半部分内容适当加权。
+            # 主要结论、研究启示、局限性通常更可能出现在后半部分。
+            if section_config.get("prefer_keyword") and max_page:
+                if isinstance(page_number, int) and page_number >= max_page - 3:
+                    score += 1
+
+            # 避免纯参考文献 chunk 干扰。
+            if "参考文献" in normalized_content and score <= 3:
+                score -= 2
+
+            if score > 0:
+                scored_chunks.append(
+                    {
+                        "chunk": chunk,
+                        "score": score,
+                        "page_number": page_number,
+                        "chunk_index": chunk_index,
+                    }
+                )
+
+        scored_chunks = sorted(
+            scored_chunks,
+            key=lambda item: (
+                -item["score"],
+                -(item["page_number"] or 0),
+                -(item["chunk_index"] or 0),
+            ),
+        )
+
+        return [item["chunk"] for item in scored_chunks[:top_k]]
+
+    @staticmethod
+    def _merge_contexts(
+        primary_contexts: List[Dict[str, Any]],
+        secondary_contexts: List[Dict[str, Any]],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        合并关键词检索和向量检索结果，并按 file_name/page_number/chunk_index 去重。
+        """
+        merged = []
+
+        def add_items(items: List[Dict[str, Any]]) -> None:
+            existing_keys = {
+                (
+                    item.get("metadata", {}).get("file_name"),
+                    item.get("metadata", {}).get("page_number"),
+                    item.get("metadata", {}).get("chunk_index"),
+                )
+                for item in merged
+            }
+
+            for item in items:
+                metadata = item.get("metadata", {})
+                item_key = (
+                    metadata.get("file_name"),
+                    metadata.get("page_number"),
+                    metadata.get("chunk_index"),
+                )
+
+                if item_key not in existing_keys:
+                    merged.append(item)
+                    existing_keys.add(item_key)
+
+        add_items(primary_contexts)
+        add_items(secondary_contexts)
+
+        return merged[:top_k]
 
     def read_single_paper(
         self,
