@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import List
 
@@ -20,6 +21,8 @@ from app.tools.export_tools import ResultExportTool
 
 
 DEFAULT_DOC_DIR = "data/demo_docs"
+RAW_DOC_DIR = "data/raw_docs"
+SUPPORTED_UPLOAD_EXTENSIONS = {".txt", ".md", ".pdf", ".docx"}
 
 
 def get_available_pdf_files(directory_path: str) -> List[str]:
@@ -97,6 +100,87 @@ def rebuild_vector_index(
 
     return len(chunks)
 
+def sanitize_uploaded_filename(file_name: str) -> str:
+    """
+    清洗上传文件名，避免路径穿越和非法字符。
+    """
+    safe_name = Path(file_name).name
+    safe_name = safe_name.strip()
+    safe_name = "".join(
+        "_" if char in r'\/:*?"<>|' else char
+        for char in safe_name
+    )
+
+    return safe_name or "uploaded_file"
+
+
+def save_uploaded_files(
+    uploaded_files,
+    save_dir: str,
+    overwrite: bool = True,
+) -> List[str]:
+    """
+    保存 Streamlit 上传的文件。
+
+    返回：
+    - 已保存文件路径列表。
+    """
+    save_path = Path(save_dir)
+    save_path.mkdir(parents=True, exist_ok=True)
+
+    saved_paths = []
+
+    for uploaded_file in uploaded_files:
+        file_name = sanitize_uploaded_filename(uploaded_file.name)
+        file_suffix = Path(file_name).suffix.lower()
+
+        if file_suffix not in SUPPORTED_UPLOAD_EXTENSIONS:
+            continue
+
+        target_path = save_path / file_name
+
+        if target_path.exists() and not overwrite:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            target_path = save_path / f"{target_path.stem}_{timestamp}{target_path.suffix}"
+
+        with open(target_path, "wb") as file:
+            file.write(uploaded_file.getbuffer())
+
+        saved_paths.append(str(target_path))
+
+    return saved_paths
+
+
+def clear_workflow_results() -> None:
+    """
+    清理已经生成的任务结果。
+
+    用于：
+    - 重建索引后；
+    - 上传新文件并重建索引后。
+
+    避免页面仍显示旧索引条件下生成的结果。
+    """
+    keys_to_clear = [
+        "rag_answer_workflow_result",
+        "single_paper_reading_workflow_result",
+        "paper_comparison_workflow_result",
+        "literature_review_workflow_result",
+        "writing_check_workflow_result",
+        "rag_answer_md_path",
+        "rag_answer_docx_path",
+        "single_paper_reading_md_path",
+        "single_paper_reading_docx_path",
+        "paper_comparison_md_path",
+        "paper_comparison_docx_path",
+        "literature_review_md_path",
+        "literature_review_docx_path",
+        "writing_check_md_path",
+        "writing_check_docx_path",
+    ]
+
+    for key in keys_to_clear:
+        st.session_state.pop(key, None)
 
 def read_file_bytes(file_path: str) -> bytes:
     """
@@ -215,15 +299,21 @@ def render_export_buttons(
 
 def render_sidebar(vector_service: VectorService) -> None:
     """
-    侧边栏：索引配置与状态。
+    侧边栏：索引配置、文件上传与索引状态。
     """
     st.sidebar.header("索引设置")
 
+    if "doc_dir" not in st.session_state:
+        st.session_state["doc_dir"] = DEFAULT_DOC_DIR
+
+    # 用 pending 机制避免在 widget 创建后直接修改同名 session_state。
+    if "_pending_doc_dir" in st.session_state:
+        st.session_state["doc_dir"] = st.session_state.pop("_pending_doc_dir")
+
     doc_dir = st.sidebar.text_input(
         "文档目录",
-        value=DEFAULT_DOC_DIR,
-        help="默认使用 data/demo_docs。也可以改为 data/raw_docs。",
-        key="sidebar_doc_dir",
+        help="默认使用 data/demo_docs。上传文件后通常切换为 data/raw_docs。",
+        key="doc_dir",
     )
 
     chunk_size = st.sidebar.number_input(
@@ -244,7 +334,6 @@ def render_sidebar(vector_service: VectorService) -> None:
         key="sidebar_overlap",
     )
 
-    st.session_state["doc_dir"] = doc_dir
     st.session_state["chunk_size"] = chunk_size
     st.session_state["overlap"] = overlap
 
@@ -256,6 +345,7 @@ def render_sidebar(vector_service: VectorService) -> None:
         current_count = 0
 
     st.sidebar.write(f"当前向量库 chunk 数量：**{current_count}**")
+    st.sidebar.write(f"当前文档目录：`{doc_dir}`")
 
     if st.sidebar.button("重建向量索引", key="rebuild_vector_index"):
         with st.spinner("正在读取文档、切分文本并写入向量库..."):
@@ -266,7 +356,81 @@ def render_sidebar(vector_service: VectorService) -> None:
                 overlap=overlap,
             )
 
+        clear_workflow_results()
         st.sidebar.success(f"索引重建完成，写入 {chunk_count} 个 chunks。")
+
+    st.sidebar.divider()
+
+    with st.sidebar.expander("上传文档并自动索引", expanded=False):
+        upload_dir = st.text_input(
+            "上传保存目录",
+            value=RAW_DOC_DIR,
+            key="upload_save_dir",
+            help="上传文件默认保存到 data/raw_docs。",
+        )
+
+        uploaded_files = st.file_uploader(
+            "上传文档",
+            type=["txt", "md", "pdf", "docx"],
+            accept_multiple_files=True,
+            key="uploaded_research_files",
+        )
+
+        overwrite = st.checkbox(
+            "同名文件覆盖",
+            value=True,
+            key="upload_overwrite",
+        )
+
+        auto_rebuild = st.checkbox(
+            "上传后自动重建索引",
+            value=True,
+            key="upload_auto_rebuild",
+        )
+
+        if st.button("保存上传文件", key="save_uploaded_files"):
+            if not uploaded_files:
+                st.warning("请先选择需要上传的文件。")
+                return
+
+            saved_paths = save_uploaded_files(
+                uploaded_files=uploaded_files,
+                save_dir=upload_dir,
+                overwrite=overwrite,
+            )
+
+            if not saved_paths:
+                st.error("没有成功保存的文件。请检查文件格式是否受支持。")
+                return
+
+            st.success(f"成功保存 {len(saved_paths)} 个文件。")
+
+            with st.expander("已保存文件", expanded=False):
+                for path in saved_paths:
+                    st.write(path)
+
+            if auto_rebuild:
+                with st.spinner("正在基于上传目录重建向量索引..."):
+                    chunk_count = rebuild_vector_index(
+                        vector_service=vector_service,
+                        doc_dir=upload_dir,
+                        chunk_size=chunk_size,
+                        overlap=overlap,
+                    )
+
+                clear_workflow_results()
+
+                # 下一次 rerun 时自动切换文档目录。
+                st.session_state["_pending_doc_dir"] = upload_dir
+
+                st.success(
+                    f"上传目录索引重建完成，写入 {chunk_count} 个 chunks。"
+                )
+                st.info(
+                    "当前文档目录将在页面刷新后切换为上传保存目录。"
+                )
+
+                st.rerun()
 
 
 def render_rag_answer(
